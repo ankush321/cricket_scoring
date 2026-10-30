@@ -1,8 +1,11 @@
 package com.example.cricketscoring.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,9 +38,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.DismissalType
 import com.example.cricketscoring.model.RuleDisposition
@@ -67,8 +75,123 @@ fun PitchCard(
     Card(
         modifier = modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         content = { Column(Modifier.padding(16.dp), content = { content() }) },
     )
+}
+
+@Composable
+fun LiveBadge(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(WicketRed.copy(alpha = 0.18f))
+            .border(1.dp, WicketRed.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(WicketRed))
+        Text("LIVE", color = WicketRed, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, fontSize = 11.sp)
+    }
+}
+
+@Composable
+fun PlayerAvatar(name: String, accent: Color, size: Dp = 44.dp, modifier: Modifier = Modifier) {
+    val initials = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2).joinToString("") { it.first().uppercase() }.ifBlank { "?" }
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.12f))))
+            .border(1.dp, accent.copy(alpha = 0.45f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(initials, color = accent, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.32f).sp)
+    }
+}
+
+@Composable
+fun BallChip(
+    symbol: String,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    val wicket = symbol.equals("W", ignoreCase = true) || symbol.contains("W", ignoreCase = true) && symbol.length <= 3
+    val boundary = symbol == "4" || symbol == "6"
+    val background = when {
+        wicket -> WicketRed
+        boundary -> Gold
+        else -> PitchRaised
+    }
+    val content = when {
+        wicket || boundary -> Color(0xFF14110A)
+        else -> Ink
+    }
+    Box(
+        modifier = modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(background)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(symbol.take(3), color = if (wicket) Color.White else content, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
+}
+
+@Composable
+fun PanelTabs(options: List<Pair<String, Boolean>>, onSelect: (Int) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(PitchRaised.copy(alpha = 0.55f))
+            .padding(4.dp),
+    ) {
+        options.forEachIndexed { index, (label, selected) ->
+            val background by animateColorAsState(if (selected) Lawn else Color.Transparent)
+            val foreground by animateColorAsState(if (selected) Color(0xFF052117) else Ink)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(background)
+                    .clickable { onSelect(index) }
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(label, color = foreground, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun ScorePadKey(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Color = PitchRaised,
+    contentColor: Color = Ink,
+) {
+    Column(
+        modifier = modifier
+            .heightIn(min = 64.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(accent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(title, color = contentColor, fontWeight = FontWeight.Black, fontSize = 20.sp, textAlign = TextAlign.Center)
+        Text(subtitle, color = contentColor.copy(alpha = 0.75f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
 }
 
 @Composable

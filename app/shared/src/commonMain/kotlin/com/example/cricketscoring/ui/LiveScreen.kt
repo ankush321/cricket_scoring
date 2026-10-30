@@ -1,15 +1,25 @@
 package com.example.cricketscoring.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -23,7 +33,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,8 +80,13 @@ fun LiveScreen(store: CricketStore, matchId: String) {
     var moreOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AppliedDelivery?>(null) }
     var panel by remember { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxSize()) {
-        ScreenHeader(match.title, onBack = { store.pop() }, action = "Undo", onAction = { store.undo(match.id) })
+    Column(Modifier.fillMaxSize().background(PitchBlack)) {
+        LiveTopBar(
+            title = match.title,
+            live = derived.status == MatchStatus.LIVE || derived.status == MatchStatus.SUPER_OVER,
+            onBack = { store.pop() },
+            onUndo = { store.undo(match.id) },
+        )
         when {
             derived.status == MatchStatus.COMPLETED || derived.status == MatchStatus.ABANDONED -> ResultPanel(store, match)
             innings == null -> Column(Modifier.padding(16.dp)) { Text("This match has not started.") }
@@ -75,29 +94,21 @@ fun LiveScreen(store: CricketStore, matchId: String) {
             derived.needsBowler -> BowlerPrompt(store, match, innings)
             derived.breakPending || derived.superOverPending -> NextInningsPrompt(store, match, derived.superOverPending)
             else -> {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                    ChoiceRow(listOf("Live" to (panel == 0), "Scorecard" to (panel == 1), "Overs" to (panel == 2), "More" to (panel == 3))) {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PanelTabs(listOf("Live" to (panel == 0), "Scorecard" to (panel == 1), "Overs" to (panel == 2), "More" to (panel == 3))) {
                         panel = it
                     }
-                    when (panel) {
-                        0 -> {
-                            ScoreHeader(match, derived, innings)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                                BatterCard(match, innings, innings.strikerId, onStrike = true, Modifier.weight(1f))
-                                if (match.rules.squad.twoBatters && !derived.lastManStanding) {
-                                    BatterCard(match, innings, innings.nonStrikerId, onStrike = false, Modifier.weight(1f))
+                    AnimatedContent(targetState = panel, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "panel") { current ->
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            when (current) {
+                                0 -> LiveBoard(match, derived, innings) { editing = it }
+                                1 -> InningsTables(match, innings)
+                                2 -> OversPanel(match, innings)
+                                else -> {
+                                    CommentaryPanel(match, innings)
+                                    MatchDetails(store, match, derived)
                                 }
                             }
-                            BowlerLine(match, innings)
-                            ThisOver(match, innings) { editing = it }
-                            if (derived.freeHit) Notice("Free hit. Only a run out, obstructing the field, or hit the ball twice can dismiss the batter.")
-                            if (derived.lastManStanding) Notice("Last man standing.")
-                        }
-                        1 -> InningsTables(match, innings)
-                        2 -> OversPanel(match, innings)
-                        else -> {
-                            CommentaryPanel(match, innings)
-                            MatchDetails(store, match, derived)
                         }
                     }
                 }
@@ -116,7 +127,15 @@ fun LiveScreen(store: CricketStore, matchId: String) {
                         moreOpen = false
                     }, onDismiss = { moreOpen = false })
                 } else {
-                    ScoringPad(onRuns = { runs -> store.score(match.id, runsInput(match, runs)) }, onMore = { moreOpen = true })
+                    ScoringPad(
+                        match = match,
+                        onRuns = { runs -> store.score(match.id, runsInput(match, runs)) },
+                        onWide = { store.score(match.id, BallInput(wide = true, underarmConfirmed = true)) },
+                        onNoBall = { noBallOpen = true },
+                        onBye = { byeOpen = true },
+                        onWicket = { wicketOpen = true },
+                        onMore = { moreOpen = true },
+                    )
                 }
             }
         }
@@ -149,96 +168,231 @@ fun LiveScreen(store: CricketStore, matchId: String) {
 }
 
 @Composable
-private fun ScoreHeader(match: Match, derived: com.example.cricketscoring.model.DerivedMatch, innings: com.example.cricketscoring.model.DerivedInnings) {
-    Text("${match.teamName(innings.battingTeamId)} batting", color = Muted)
-    Text("${match.teamName(innings.bowlingTeamId)} bowling", color = Muted)
-    AnimatedContent(targetState = "${innings.runs}/${innings.wickets}") { score ->
-        Text(score, fontSize = 64.sp, fontWeight = FontWeight.Black, color = match.style.accent())
+private fun LiveTopBar(title: String, live: Boolean, onBack: () -> Unit, onUndo: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = onBack) { Text("Back") }
+        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+            Text("Scoreboard", color = Muted, style = MaterialTheme.typography.bodySmall)
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+        if (live) {
+            LiveBadge(Modifier.padding(end = 4.dp))
+        }
+        TextButton(onClick = onUndo) { Text("Undo") }
     }
-    val maxOvers = innings.maxLegalBalls?.let { oversLabel(it, innings.ballsPerOver) }
-    val left = innings.maxLegalBalls?.let { max -> oversLabel((max - innings.legalBalls).coerceAtLeast(0), innings.ballsPerOver) }
-    Text(
-        if (maxOvers != null && left != null) "${innings.oversLabel()} of $maxOvers overs · $left left" else "Overs ${innings.oversLabel()}",
-        style = MaterialTheme.typography.titleMedium,
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("CRR ${derived.currentRunRate?.twoDecimals() ?: "0.00"}", color = Muted)
-        derived.requiredRunRate?.let { Text("RRR ${it.twoDecimals()}", color = Gold) }
-    }
-    innings.target?.let { Text("Target $it", color = Gold) }
-    derived.equation?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-    if (match.rules.overs.underarmOnly) Text("Underarm", color = Muted, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
-private fun BatterCard(
+private fun LiveBoard(
+    match: Match,
+    derived: com.example.cricketscoring.model.DerivedMatch,
+    innings: com.example.cricketscoring.model.DerivedInnings,
+    onBall: (AppliedDelivery) -> Unit,
+) {
+    ScoreboardHero(match, derived, innings)
+    BattersCard(match, derived, innings)
+    BowlerCard(match, innings, onBall)
+    if (derived.freeHit) Notice("Free hit. Only a run out, obstructing the field, or hit the ball twice can dismiss the batter.")
+    if (derived.lastManStanding) Notice("Last man standing.")
+}
+
+@Composable
+private fun ScoreboardHero(
+    match: Match,
+    derived: com.example.cricketscoring.model.DerivedMatch,
+    innings: com.example.cricketscoring.model.DerivedInnings,
+) {
+    val accent = match.style.accent()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.verticalGradient(listOf(PitchRaised, PitchCard, PitchBlack)))
+            .padding(18.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "${match.teamName(innings.battingTeamId).uppercase()} VS ${match.teamName(innings.bowlingTeamId).uppercase()}",
+                color = Muted,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AnimatedContent(targetState = "${innings.runs}/${innings.wickets}", label = "score") { score ->
+                    Text(score, fontSize = 56.sp, fontWeight = FontWeight.Black, color = Color.White, lineHeight = 56.sp)
+                }
+                Text(innings.oversLabel(), fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = accent, modifier = Modifier.padding(bottom = 8.dp))
+                Spacer(Modifier.weight(1f))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("CURRENT RR", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(derived.currentRunRate?.twoDecimals() ?: "0.00", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                MetricChip("Overs", innings.maxLegalBalls?.let { "${innings.oversLabel()} / ${oversLabel(it, innings.ballsPerOver)}" } ?: innings.oversLabel(), Modifier.weight(1f))
+                innings.target?.let { MetricChip("Target", "$it", Modifier.weight(1f), highlight = true) }
+                derived.requiredRunRate?.let { MetricChip("Req RR", it.twoDecimals(), Modifier.weight(1f), highlight = true) }
+            }
+            derived.equation?.let { Text(it, color = Gold, fontWeight = FontWeight.SemiBold) }
+        }
+    }
+}
+
+@Composable
+private fun MetricChip(label: String, value: String, modifier: Modifier = Modifier, highlight: Boolean = false) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (highlight) Gold.copy(alpha = 0.12f) else PitchBlack.copy(alpha = 0.35f))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Text(label.uppercase(), color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text(value, color = if (highlight) Gold else Ink, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+@Composable
+private fun BattersCard(
+    match: Match,
+    derived: com.example.cricketscoring.model.DerivedMatch,
+    innings: com.example.cricketscoring.model.DerivedInnings,
+) {
+    PitchCard {
+        Text("CURRENT BATTERS", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Spacer(Modifier.height(10.dp))
+        BatterRow(match, innings, innings.strikerId, onStrike = true)
+        if (match.rules.squad.twoBatters && !derived.lastManStanding) {
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(PitchRaised))
+            Spacer(Modifier.height(12.dp))
+            BatterRow(match, innings, innings.nonStrikerId, onStrike = false)
+        }
+    }
+}
+
+@Composable
+private fun BatterRow(
     match: Match,
     innings: com.example.cricketscoring.model.DerivedInnings,
     playerId: String?,
     onStrike: Boolean,
-    modifier: Modifier = Modifier,
 ) {
     val row = innings.battingRows.find { it.playerId == playerId }
     val name = playerId?.let { match.playerName(it) } ?: "—"
-    PitchCard(modifier) {
-        Text(if (onStrike) "On strike" else "Other batter", color = Muted, style = MaterialTheme.typography.bodySmall)
-        Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text("${row?.runs ?: 0} (${row?.balls ?: 0})", style = MaterialTheme.typography.titleLarge)
+    val accent = match.style.accent()
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        PlayerAvatar(name, if (onStrike) accent else Muted)
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (onStrike) {
+                    Text("★", color = Gold, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text(
+                "${row?.runs ?: 0}  (${row?.balls ?: 0} balls · ${row?.fours ?: 0}x4 · ${row?.sixes ?: 0}x6)",
+                color = Muted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text("STR", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text((row?.strikeRate ?: 0.0).twoDecimals(), fontWeight = FontWeight.Bold, color = if (onStrike) accent else Ink)
+        }
     }
 }
 
 @Composable
-private fun BowlerLine(match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
+private fun BowlerCard(
+    match: Match,
+    innings: com.example.cricketscoring.model.DerivedInnings,
+    onBall: (AppliedDelivery) -> Unit,
+) {
     val row = innings.bowlingRows.find { it.playerId == innings.bowlerId }
     val name = innings.bowlerId?.let { match.playerName(it) } ?: "—"
-    Text(
-        "${match.rules.labels.bowlingRole} $name  ${oversLabel(row?.legalBalls ?: 0, innings.ballsPerOver)}-${row?.maidens ?: 0}-${row?.runs ?: 0}-${row?.wickets ?: 0}  Econ ${(row?.economy ?: 0.0).twoDecimals()}",
-        color = Muted,
-        modifier = Modifier.padding(vertical = 8.dp),
-    )
-}
-
-@Composable
-private fun ThisOver(match: Match, innings: com.example.cricketscoring.model.DerivedInnings, onTap: (AppliedDelivery) -> Unit) {
     val over = innings.thisOver()
     val number = (over.lastOrNull()?.overIndex ?: 0) + 1
-    Text("Over $number · ${over.sumOf { it.totalRuns }} runs · ${over.count { it.dismissal?.isWicket == true }} wickets", color = Muted)
-    Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (over.isEmpty()) Text("No balls yet", color = Muted)
-        over.forEach { ball ->
-            TextButton(onClick = { onTap(ball) }) { Text(ball.symbol, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+    PitchCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            PlayerAvatar(name, Lawn)
+            Column(Modifier.weight(1f)) {
+                Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "${row?.wickets ?: 0}/${row?.runs ?: 0}  (${oversLabel(row?.legalBalls ?: 0, innings.ballsPerOver)} overs)",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("ECO", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text((row?.economy ?: 0.0).twoDecimals(), fontWeight = FontWeight.Bold, color = Lawn)
+            }
         }
-    }
-    over.lastOrNull()?.let { ball ->
-        Text("${match.playerName(ball.batterId)} to ${match.playerName(ball.bowlerId)}", color = Muted, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(14.dp))
+        Text("OVER $number", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (over.isEmpty()) {
+                repeat(match.rules.overs.ballsPerOver.coerceAtMost(6)) {
+                    Box(Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape).background(PitchRaised.copy(alpha = 0.45f)))
+                }
+            } else {
+                over.forEach { ball -> BallChip(ball.symbol, onClick = { onBall(ball) }) }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "${over.sumOf { it.totalRuns }} runs · ${over.count { it.dismissal?.isWicket == true }} wickets",
+            color = Muted,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
 @Composable
-private fun ScoringPad(onRuns: (Int) -> Unit, onMore: () -> Unit) {
-    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun ScoringPad(
+    match: Match,
+    onRuns: (Int) -> Unit,
+    onWide: () -> Unit,
+    onNoBall: () -> Unit,
+    onBye: () -> Unit,
+    onWicket: () -> Unit,
+    onMore: () -> Unit,
+) {
+    val rules = match.rules
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(PitchCard)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(0, 1, 2, 3).forEach { runs -> ScoreKey("$runs", { onRuns(runs) }, Modifier.weight(1f)) }
+            ScorePadKey("0", "DOT", { onRuns(0) }, Modifier.weight(1f))
+            ScorePadKey("1", "RUN", { onRuns(1) }, Modifier.weight(1f))
+            ScorePadKey("2", "RUNS", { onRuns(2) }, Modifier.weight(1f))
+            ScorePadKey("3", "RUNS", { onRuns(3) }, Modifier.weight(1f))
+            ScorePadKey("4", "FOUR", { onRuns(4) }, Modifier.weight(1f), accent = Gold, contentColor = Color(0xFF241A05))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ScoreKey("4", { onRuns(4) }, Modifier.weight(1f))
-            ScoreKey("6", { onRuns(6) }, Modifier.weight(1f))
-            ScoreKey("More", onMore, Modifier.weight(1f), filled = false)
+            ScorePadKey("6", "SIX", { onRuns(6) }, Modifier.weight(1f), accent = Gold.copy(alpha = 0.85f), contentColor = Color(0xFF241A05))
+            if (rules.extras.widesEnabled) {
+                ScorePadKey("WD", "WIDE", onWide, Modifier.weight(1f))
+            }
+            if (rules.extras.noBallsEnabled) {
+                ScorePadKey("NB", "NO BALL", onNoBall, Modifier.weight(1f))
+            }
+            if (rules.extras.byesEnabled) {
+                ScorePadKey("BY", "BYE", onBye, Modifier.weight(1f))
+            }
+            ScorePadKey("W", "WICKET", onWicket, Modifier.weight(1f), accent = WicketRed, contentColor = Color.White)
+            ScorePadKey("···", "MORE", onMore, Modifier.weight(1f))
         }
-    }
-}
-
-@Composable
-private fun ScoreKey(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, filled: Boolean = true, wicket: Boolean = false) {
-    val colors = when {
-        wicket -> ButtonDefaults.buttonColors(containerColor = WicketRed, contentColor = androidx.compose.ui.graphics.Color.White)
-        filled -> ButtonDefaults.buttonColors(containerColor = PitchRaised, contentColor = Ink)
-        else -> ButtonDefaults.outlinedButtonColors(contentColor = Ink)
-    }
-    if (filled || wicket) {
-        Button(onClick = onClick, modifier = modifier.heightIn(min = 56.dp), colors = colors) { Text(label, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-    } else {
-        androidx.compose.material3.OutlinedButton(onClick = onClick, modifier = modifier.heightIn(min = 48.dp)) { Text(label) }
     }
 }
 
@@ -532,53 +686,92 @@ private fun DeliveryDialog(match: Match, delivery: AppliedDelivery, onDismiss: (
 
 @Composable
 private fun InningsTables(match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
-    Text("${match.teamName(innings.battingTeamId)}  ${innings.scoreLine()}", style = MaterialTheme.typography.titleLarge)
-    ScoreLine("Batter    Dismissal    R   B   4s  6s  SR", header = true)
-    innings.battingRows.forEach { row ->
-        ScoreLine("${row.name}    ${row.dismissalText}    ${row.runs}   ${row.balls}   ${row.fours}  ${row.sixes}  ${row.strikeRate.twoDecimals()}")
+    PitchCard {
+        Text("${match.teamName(innings.battingTeamId)}  ${innings.scoreLine()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Batting", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+        innings.battingRows.forEach { row ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                PlayerAvatar(row.name, match.style.accent(), size = 34.dp)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(row.name, fontWeight = FontWeight.SemiBold)
+                    Text(row.dismissalText, color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("${row.runs}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("${row.balls}b · ${row.fours}x4 · ${row.sixes}x6", color = Muted, fontSize = 11.sp)
+                }
+            }
+        }
+        if (innings.yetToBat.isNotEmpty()) {
+            Text("Yet to bat", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+            Text(innings.yetToBat.joinToString { match.playerName(it) }, color = Ink)
+        }
+        val extras = innings.extras
+        Spacer(Modifier.height(10.dp))
+        Text("Extras ${extras.total}  ·  wd ${extras.wides}  nb ${extras.noBalls}  b ${extras.byes}  lb ${extras.legByes}  p ${extras.penalties}", color = Muted)
+        if (innings.fallOfWickets.isNotEmpty()) {
+            Text("Fall of wickets", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+            Text(innings.fallOfWickets.joinToString("   ") { "${it.wicketNumber}-${it.teamScore} ${it.batterName}" })
+        }
+        innings.partnerships.lastOrNull { it.endedAtEpochMs == null || it == innings.partnerships.last() }?.let { partnership ->
+            Text("Partnership ${partnership.batterNames.joinToString(" & ")}  ${partnership.runs} (${partnership.balls})", color = Gold, modifier = Modifier.padding(top = 6.dp))
+        }
     }
-    if (innings.yetToBat.isNotEmpty()) Text("Yet to bat: ${innings.yetToBat.joinToString { match.playerName(it) }}", color = Muted)
-    val extras = innings.extras
-    Text("Extras ${extras.total}  wd ${extras.wides}  nb ${extras.noBalls}  b ${extras.byes}  lb ${extras.legByes}  p ${extras.penalties}")
-    if (innings.fallOfWickets.isNotEmpty()) {
-        Text("Fall of wickets", fontWeight = FontWeight.SemiBold)
-        Text(innings.fallOfWickets.joinToString("   ") { "${it.wicketNumber}-${it.teamScore} ${it.batterName}" })
+    PitchCard {
+        Text("Bowling", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        innings.bowlingRows.forEach { row ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                PlayerAvatar(row.name, Lawn, size = 34.dp)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(row.name, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${oversLabel(row.legalBalls, innings.ballsPerOver)} ov · ${row.maidens} m" +
+                            (if (match.rules.extras.widesEnabled) " · ${row.wides} wd" else "") +
+                            (if (match.rules.extras.noBallsEnabled) " · ${row.noBalls} nb" else ""),
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("${row.wickets}/${row.runs}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("Eco ${row.economy.twoDecimals()}", color = Muted, fontSize = 11.sp)
+                }
+            }
+        }
     }
-    innings.partnerships.lastOrNull { it.endedAtEpochMs == null || it == innings.partnerships.last() }?.let { partnership ->
-        Text("Partnership ${partnership.batterNames.joinToString(" & ")}  ${partnership.runs} (${partnership.balls})", color = Muted)
-    }
-    ScoreLine("Bowler    O    M    R    W" + (if (match.rules.extras.widesEnabled) "    WD" else "") + (if (match.rules.extras.noBallsEnabled) "    NB" else "") + "    Econ", header = true)
-    innings.bowlingRows.forEach { row ->
-        val wide = if (match.rules.extras.widesEnabled) "    ${row.wides}" else ""
-        val noBall = if (match.rules.extras.noBallsEnabled) "    ${row.noBalls}" else ""
-        ScoreLine("${row.name}    ${oversLabel(row.legalBalls, innings.ballsPerOver)}    ${row.maidens}    ${row.runs}    ${row.wickets}$wide$noBall    ${row.economy.twoDecimals()}")
-    }
-}
-
-@Composable
-private fun ScoreLine(text: String, header: Boolean = false) {
-    Text(
-        text,
-        color = if (header) Muted else Ink,
-        fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
-        softWrap = false,
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-    )
 }
 
 @Composable
 private fun OversPanel(match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
     var open by remember { mutableStateOf(setOf<Int>()) }
     if (innings.overs.isEmpty()) Text("No overs yet.", color = Muted)
-    innings.overs.forEach { over ->
+    innings.overs.asReversed().forEach { over ->
         val number = over.overIndex + 1
         val expanded = over.overIndex in open
-        SecondaryButton("Over $number  ${over.bowlerName}  ${over.symbols.joinToString(", ")}  ${over.runs} runs  ${over.wickets} wkts  ${over.scoreAfter}/${over.wicketsAfter}", {
-            open = if (expanded) open - over.overIndex else open + over.overIndex
-        })
-        if (expanded) {
-            over.deliveries.forEach { ball ->
-                Text("${ball.symbol}  ${match.playerName(ball.batterId)}  ${ball.commentary ?: if (ball.legal) "legal" else "extra"}", color = Muted)
+        PitchCard(onClick = { open = if (expanded) open - over.overIndex else open + over.overIndex }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Over $number · ${over.bowlerName}", fontWeight = FontWeight.Bold)
+                    Text("${over.runs} runs · ${over.wickets} wkts · ${over.scoreAfter}/${over.wicketsAfter}", color = Muted)
+                }
+                Text(if (expanded) "Hide" else "Open", color = Lawn, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                over.symbols.forEach { symbol -> BallChip(symbol) }
+            }
+            if (expanded) {
+                Spacer(Modifier.height(10.dp))
+                over.deliveries.forEach { ball ->
+                    Text(
+                        "${ball.symbol}  ${match.playerName(ball.batterId)}  ${ball.commentary ?: if (ball.legal) "legal" else "extra"}",
+                        color = Muted,
+                        modifier = Modifier.padding(vertical = 2.dp),
+                    )
+                }
             }
         }
     }
@@ -586,10 +779,21 @@ private fun OversPanel(match: Match, innings: com.example.cricketscoring.model.D
 
 @Composable
 private fun CommentaryPanel(match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
-    if (innings.deliveries.isEmpty()) Text("No balls yet.", color = Muted)
-    innings.deliveries.asReversed().forEach { ball ->
-        val note = ball.commentary ?: ball.scoringEventName
-        Text("${ball.symbol}  ${match.playerName(ball.batterId)} to ${match.playerName(ball.bowlerId)}" + (note?.let { "  $it" } ?: ""))
+    PitchCard {
+        Text("Ball by ball", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        if (innings.deliveries.isEmpty()) Text("No balls yet.", color = Muted)
+        innings.deliveries.asReversed().forEach { ball ->
+            val note = ball.commentary ?: ball.scoringEventName
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                BallChip(ball.symbol)
+                Column(Modifier.weight(1f)) {
+                    Text("${match.playerName(ball.batterId)} to ${match.playerName(ball.bowlerId)}", fontWeight = FontWeight.SemiBold)
+                    note?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
+                }
+                Text("${ball.totalRuns}", color = Gold, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
