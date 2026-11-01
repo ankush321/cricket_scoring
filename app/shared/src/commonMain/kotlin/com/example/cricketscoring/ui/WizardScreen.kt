@@ -1,24 +1,23 @@
 package com.example.cricketscoring.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.model.AdditionalScoringEvent
 import com.example.cricketscoring.model.CricketStyle
@@ -34,6 +33,8 @@ import com.example.cricketscoring.rules.openDefaults
 import com.example.cricketscoring.rules.overarmLimited
 import com.example.cricketscoring.rules.overarmMultiInnings
 import com.example.cricketscoring.rules.styleTitle
+
+private val wizardLabels = listOf("Teams", "Format", "Rules", "Start")
 
 @Composable
 fun WizardScreen(store: CricketStore) {
@@ -59,33 +60,38 @@ fun WizardScreen(store: CricketStore) {
                 }
             },
         )
-        Text(
-            "Step ${draft.step} of 4 · ${styleTitle(draft.style)}",
-            color = draft.style.accent(),
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            StepProgress(draft.step, 4, wizardLabels, draft.style.accent())
             when (draft.step) {
                 1 -> TeamsStep(store, draft, edit, onCreate = { creating = true })
                 2 -> FormatStep(store, draft, edit)
                 3 -> RulesStep(store, draft, edit)
                 else -> ConfirmStep(store, draft, edit)
             }
+            Spacer(Modifier.height(8.dp))
         }
-        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionDock {
             if (draft.step < 4) {
-                PrimaryButton("Continue", { advance(store, draft, edit) }, Modifier.weight(1f))
+                PrimaryButton(
+                    when (draft.step) {
+                        1 -> "Confirm teams"
+                        2 -> "Confirm format"
+                        else -> "Confirm rules"
+                    },
+                    { advance(store, draft, edit) },
+                    Modifier.fillMaxWidth(),
+                )
             } else {
-                SecondaryButton("Save for later", { store.commitDraft(start = false) }, Modifier.weight(1f))
-                PrimaryButton("Start match", { store.commitDraft(start = true) }, Modifier.weight(1f))
+                PrimaryButton("Start match", { store.commitDraft(start = true) }, Modifier.fillMaxWidth())
+                SecondaryButton("Save for later", { store.commitDraft(start = false) }, Modifier.fillMaxWidth())
             }
         }
     }
     if (creating) {
-        CreateTeamDialog(
+        CreateTeamSheet(
             onDismiss = { creating = false },
             onCreate = { name, players ->
                 val team = store.createTeam(name, players, teamPalette[store.data.teams.size % teamPalette.size])
@@ -140,38 +146,57 @@ private fun seedSquads(store: CricketStore, draft: MatchDraft): MatchDraft {
 @Composable
 private fun TeamsStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit, onCreate: () -> Unit) {
     val teams = store.data.teams.filterNot { it.archived }
-    Text("Select or create the two teams. Players can be reused in every cricket style.", color = Muted)
+    PageHeading("Choose the two sides", "Pick Team A and Team B. You can create a new team if needed.")
     if (teams.isEmpty()) {
         EmptyHint("No teams yet", "Add both sides with one player name on each line.", "Create a team", onCreate)
         return
     }
-    SectionLabel("Team A")
-    teams.forEach { team ->
-        TeamPick(team, draft.teamAId == team.id, store) { edit { it.copy(teamAId = team.id, squadA = emptyList()) } }
+    ContentBlock("Team A", "Home or first side for this match.") {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            teams.forEach { team ->
+                TeamPick(team, draft.teamAId == team.id, store, draft.style.accent()) {
+                    edit { it.copy(teamAId = team.id, squadA = emptyList()) }
+                }
+            }
+        }
     }
-    SectionLabel("Team B")
-    teams.forEach { team ->
-        TeamPick(team, draft.teamBId == team.id, store) { edit { it.copy(teamBId = team.id, squadB = emptyList()) } }
+    ContentBlock("Team B", "The opposing side.") {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            teams.forEach { team ->
+                TeamPick(team, draft.teamBId == team.id, store, draft.style.accent()) {
+                    edit { it.copy(teamBId = team.id, squadB = emptyList()) }
+                }
+            }
+        }
     }
-    SecondaryButton("Create a team", onCreate)
+    SecondaryButton("Create a team", onCreate, Modifier.fillMaxWidth())
 }
 
 @Composable
-private fun TeamPick(team: Team, selected: Boolean, store: CricketStore, onClick: () -> Unit) {
-    PitchCard(onClick = onClick) {
-        Text(if (selected) "Selected · ${team.name}" else team.name, color = if (selected) Lawn else MaterialTheme.colorScheme.onSurface)
-        Text(team.playerIds.joinToString { store.playerName(it) }, color = Muted)
-    }
+private fun TeamPick(team: Team, selected: Boolean, store: CricketStore, accent: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    SelectableTile(
+        title = team.name,
+        subtitle = team.playerIds.joinToString { store.playerName(it) }.ifBlank { "No players yet" },
+        selected = selected,
+        accent = accent,
+        onClick = onClick,
+        leading = { PlayerAvatar(team.name, accent, size = 40.dp) },
+    )
 }
 
 @Composable
 private fun FormatStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
     val teamA = store.data.teams.find { it.id == draft.teamAId }
     val teamB = store.data.teams.find { it.id == draft.teamBId }
-    NameField("Match title", draft.title.ifBlank { "${teamA?.name.orEmpty()} v ${teamB?.name.orEmpty()}" }) { value ->
-        edit { it.copy(title = value) }
+    PageHeading("Set the match format", "Keep the defaults if this ground plays a normal game.")
+    ContentBlock("Fixture details", "Name the match and where it is played.") {
+        NameField("Match title", draft.title.ifBlank { "${teamA?.name.orEmpty()} v ${teamB?.name.orEmpty()}" }) { value ->
+            edit { it.copy(title = value) }
+        }
+        Spacer(Modifier.height(8.dp))
+        NameField("Ground", draft.venue) { value -> edit { it.copy(venue = value) } }
     }
-    NameField("Ground", draft.venue) { value -> edit { it.copy(venue = value) } }
+    ContentBlock("Squad and overs", "These numbers become the starting lineup size and overs limit.") {
     if (draft.style == CricketStyle.OVERARM) {
         SectionLabel("Format preset")
         Text("Presets fill a starting point. Change any number after you pick one.", color = Muted)
@@ -207,6 +232,7 @@ private fun FormatStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraf
     IntField("Maximum overs per bowler (empty means no cap)", draft.rules.overs.maxOversPerBowler) { value ->
         edit { it.copy(rules = it.rules.copy(overs = it.rules.overs.copy(maxOversPerBowler = value))) }
     }
+    }
 }
 
 @Composable
@@ -215,7 +241,8 @@ private fun RulesStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft
     fun rules(block: (com.example.cricketscoring.model.RulesProfile) -> com.example.cricketscoring.model.RulesProfile) {
         edit { it.copy(rules = block(it.rules).copy(source = RuleSource.CUSTOM)) }
     }
-    Text("Recommended rules for ${styleTitle(draft.style)} are ready. Open Advanced rules only if this ground plays differently.", color = Muted)
+    PageHeading("Confirm the rules", "Recommended rules for ${styleTitle(draft.style)} are ready. Open Advanced rules only if this ground plays differently.")
+    ContentBlock("Starting point", "Use the recommended set unless the organizer asks for changes.") {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         SecondaryButton("Recommended", {
             val fresh = when (draft.style) {
@@ -232,6 +259,7 @@ private fun RulesStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft
         SecondaryButton(profile.name, {
             edit { it.copy(rules = profile.copy(id = it.rules.id), tournamentId = store.data.tournaments.find { tournament -> tournament.rules.id == profile.id }?.id) }
         }, Modifier.fillMaxWidth())
+    }
     }
     Disclosure("Advanced rules", "Custom runs, dismissals, player changes, and team sizes stay on their recommended settings until you open this.") {
     SectionLabel("Match format")
@@ -371,16 +399,20 @@ private fun ConfirmStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDra
     var approvalB by remember { mutableStateOf(false) }
     val teamAName = store.data.teams.find { it.id == draft.teamAId }?.name ?: "Team A"
     val teamBName = store.data.teams.find { it.id == draft.teamBId }?.name ?: "Team B"
-    Text("$teamAName vs $teamBName", style = MaterialTheme.typography.titleLarge)
-    Text(
-        "${draft.rules.overs.oversPerInnings ?: "No"} overs · ${draft.rules.squad.playersPerTeam} players · ${draft.rules.overs.inningsPerTeam} innings a side",
-        color = Muted,
+    PageHeading("Ready to start", "Confirm the matchup, who bats first, and the opening lineup.")
+    MatchupBanner(
+        teamA = teamAName,
+        teamB = teamBName,
+        detail = "${draft.rules.overs.oversPerInnings ?: "No"} overs · ${draft.rules.squad.playersPerTeam} players · ${draft.rules.overs.inningsPerTeam} innings a side",
+        accent = draft.style.accent(),
     )
-    SectionLabel("Who bats first")
-    TossStep(store, draft, edit)
-    SectionLabel("Opening players")
-    OpenersStep(store, draft, edit)
-    Text("Check this list, then confirm. Those choices stay locked after the first ball.", color = Muted)
+    ContentBlock("Who bats first", "Record the toss, or pick the batting side directly.") {
+        TossStep(store, draft, edit)
+    }
+    ContentBlock("Lineup and openers", "Choose squads, then the first batters and bowler.") {
+        OpenersStep(store, draft, edit)
+    }
+    ContentBlock("Rules summary", "These choices stay locked after the first ball.") {
     SectionLabel("Additional scoring")
     val enabled = rules.additionalScoring.events.filter { it.enabled }
     if (enabled.isEmpty()) Text("No extra scoring values.", color = Muted)
@@ -425,6 +457,7 @@ private fun ConfirmStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDra
     ToggleRow("These rules were checked with the organizer", rules.confirmedByOrganizer) { on ->
         edit { it.copy(rules = it.rules.copy(confirmedByOrganizer = on)) }
     }
+    }
 }
 
 private fun yesNo(value: Boolean) = if (value) "Yes" else "No"
@@ -463,23 +496,25 @@ private fun moveSquadPlayer(
 private fun TossStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
     val teamA = store.data.teams.find { it.id == draft.teamAId }
     val teamB = store.data.teams.find { it.id == draft.teamBId }
-    Text("Record the toss, or pick the batting side directly.", color = Muted)
+    val accent = draft.style.accent()
     ToggleRow("No toss", draft.skipToss) { on -> edit { it.copy(skipToss = on) } }
-    if (draft.skipToss) {
-        SectionLabel("Who bats first?")
-        teamA?.let { TeamPick(it, draft.manualBattingId == it.id, store) { edit { current -> current.copy(manualBattingId = it.id) } } }
-        teamB?.let { TeamPick(it, draft.manualBattingId == it.id, store) { edit { current -> current.copy(manualBattingId = it.id) } } }
-    } else {
-        SectionLabel("Toss won by")
-        teamA?.let { TeamPick(it, draft.tossWinnerId == it.id, store) { edit { current -> current.copy(tossWinnerId = it.id) } } }
-        teamB?.let { TeamPick(it, draft.tossWinnerId == it.id, store) { edit { current -> current.copy(tossWinnerId = it.id) } } }
-        SectionLabel("Decision")
-        ChoiceRow(listOf("Bat" to (draft.tossChoice == TossChoice.BAT), "Bowl" to (draft.tossChoice == TossChoice.BOWL))) { index ->
-            edit { it.copy(tossChoice = if (index == 0) TossChoice.BAT else TossChoice.BOWL) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (draft.skipToss) {
+            SectionLabel("Who bats first?")
+            teamA?.let { TeamPick(it, draft.manualBattingId == it.id, store, accent) { edit { current -> current.copy(manualBattingId = it.id) } } }
+            teamB?.let { TeamPick(it, draft.manualBattingId == it.id, store, accent) { edit { current -> current.copy(manualBattingId = it.id) } } }
+        } else {
+            SectionLabel("Toss won by")
+            teamA?.let { TeamPick(it, draft.tossWinnerId == it.id, store, accent) { edit { current -> current.copy(tossWinnerId = it.id) } } }
+            teamB?.let { TeamPick(it, draft.tossWinnerId == it.id, store, accent) { edit { current -> current.copy(tossWinnerId = it.id) } } }
+            SectionLabel("Decision")
+            ChoiceRow(listOf("Bat" to (draft.tossChoice == TossChoice.BAT), "Bowl" to (draft.tossChoice == TossChoice.BOWL))) { index ->
+                edit { it.copy(tossChoice = if (index == 0) TossChoice.BAT else TossChoice.BOWL) }
+            }
         }
     }
     battingFirstId(draft)?.let { batting ->
-        Text("${store.data.teams.find { it.id == batting }?.name ?: "The batting side"} will bat first.", color = Lawn)
+        Text("${store.data.teams.find { it.id == batting }?.name ?: "The batting side"} will bat first.", color = Lawn, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -497,87 +532,96 @@ private fun OpenersStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDra
     val squadASelected = if (batting.id == teamA.id) draft.squadA else draft.squadB
     val squadBSelected = if (bowling.id == teamA.id) draft.squadA else draft.squadB
     val limit = draft.rules.squad.playersPerTeam
-    Text("Playing squads, then the opening batters and ${draft.rules.labels.bowlingRole.lowercase()}.", color = Muted)
-    SquadPicker("${batting.name} · $limit players", batting, squadASelected, limit, store) { selected ->
+    val accent = draft.style.accent()
+    SquadPicker("${batting.name} batting · $limit", batting, squadASelected, limit, store, accent) { selected ->
         edit { current -> if (batting.id == current.teamAId) current.copy(squadA = selected) else current.copy(squadB = selected) }
     }
-    SquadPicker("${bowling.name} · $limit players", bowling, squadBSelected, limit, store) { selected ->
+    Spacer(Modifier.height(8.dp))
+    SquadPicker("${bowling.name} bowling · $limit", bowling, squadBSelected, limit, store, accent) { selected ->
         edit { current -> if (bowling.id == current.teamAId) current.copy(squadA = selected) else current.copy(squadB = selected) }
     }
     if (squadASelected.isNotEmpty()) {
+        Spacer(Modifier.height(8.dp))
         SectionLabel("Striker")
-        squadASelected.forEach { id ->
-            PickRow(store.playerName(id), draft.strikerId == id) { edit { it.copy(strikerId = id) } }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            squadASelected.forEach { id ->
+                LineupPick(store.playerName(id), "Faces the first ball", draft.strikerId == id, accent) {
+                    edit { it.copy(strikerId = id) }
+                }
+            }
         }
         if (draft.rules.squad.twoBatters) {
             SectionLabel("Non-striker")
-            squadASelected.filter { it != draft.strikerId }.forEach { id ->
-                PickRow(store.playerName(id), draft.nonStrikerId == id) { edit { it.copy(nonStrikerId = id) } }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                squadASelected.filter { it != draft.strikerId }.forEach { id ->
+                    LineupPick(store.playerName(id), "Other end", draft.nonStrikerId == id, accent) {
+                        edit { it.copy(nonStrikerId = id) }
+                    }
+                }
             }
         }
     }
     if (squadBSelected.isNotEmpty()) {
         SectionLabel(draft.rules.labels.bowlingRole)
-        squadBSelected.forEach { id ->
-            PickRow(store.playerName(id), draft.bowlerId == id) { edit { it.copy(bowlerId = id) } }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            squadBSelected.forEach { id ->
+                LineupPick(store.playerName(id), "Opens the bowling", draft.bowlerId == id, accent) {
+                    edit { it.copy(bowlerId = id) }
+                }
+            }
         }
     }
     if (draft.rules.squad.captainRequired || draft.rules.squad.wicketkeeperRequired) {
         Notice("Captain and wicketkeeper default to the first player in each squad. Change them from the team page before the match if you need someone else.")
     }
     SectionLabel("Rules in this match")
-    Text(draft.rules.name)
+    Text(draft.rules.name, fontWeight = FontWeight.SemiBold)
     Text("${draft.rules.squad.playersPerTeam} players · ${draft.rules.overs.oversPerInnings ?: "unlimited"} overs · ${draft.rules.overs.ballsPerOver} balls", color = Muted)
     draft.rules.organizerPrompts.take(3).forEach { prompt -> Notice(prompt) }
 }
 
 @Composable
-private fun SquadPicker(title: String, team: Team, selected: List<String>, limit: Int, store: CricketStore, onChange: (List<String>) -> Unit) {
+private fun SquadPicker(
+    title: String,
+    team: Team,
+    selected: List<String>,
+    limit: Int,
+    store: CricketStore,
+    accent: androidx.compose.ui.graphics.Color,
+    onChange: (List<String>) -> Unit,
+) {
     SectionLabel("$title · ${selected.size} selected")
     if (team.playerIds.size < limit) {
         Notice("${team.name} only has ${team.playerIds.size} players. Add more, or lower the squad size.")
     }
-    team.playerIds.forEach { id ->
-        val on = id in selected
-        PickRow(store.playerName(id), on) {
-            onChange(
-                when {
-                    on -> selected - id
-                    selected.size >= limit -> selected
-                    else -> selected + id
-                },
-            )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        team.playerIds.forEach { id ->
+            val on = id in selected
+            LineupPick(store.playerName(id), if (on) "In the playing XI" else "Tap to include", on, accent) {
+                onChange(
+                    when {
+                        on -> selected - id
+                        selected.size >= limit -> selected
+                        else -> selected + id
+                    },
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun PickRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(if (selected) "●  $label" else "○  $label", color = if (selected) Lawn else MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-@Composable
-fun CreateTeamDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var players by remember { mutableStateOf("") }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("New team") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                NameField("Team name", name) { name = it }
-                NameField("Players, one name per line", players, singleLine = false) { players = it }
-            }
-        },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = { onCreate(name, players) }) { Text("Save team") } },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } },
+private fun LineupPick(label: String, subtitle: String, selected: Boolean, accent: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    SelectableTile(
+        title = label,
+        subtitle = subtitle,
+        selected = selected,
+        accent = accent,
+        onClick = onClick,
+        leading = { PlayerAvatar(label, accent, size = 36.dp) },
     )
 }
+
 
 private fun com.example.cricketscoring.model.RulesProfile.withDismissal(type: DismissalType, enabled: Boolean) = copy(
     dismissals = dismissals.copy(

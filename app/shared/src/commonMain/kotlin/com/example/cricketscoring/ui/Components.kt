@@ -9,15 +9,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.DismissalType
 import com.example.cricketscoring.model.RuleDisposition
@@ -54,6 +59,312 @@ import com.example.cricketscoring.rules.styleTitle
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.titleMedium, modifier = modifier.padding(bottom = 8.dp))
+}
+
+@Composable
+fun PageHeading(title: String, subtitle: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(subtitle, color = Muted, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+fun StepProgress(step: Int, total: Int, labels: List<String>, accent: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            repeat(total) { index ->
+                val active = index + 1 <= step
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (active) accent else PitchRaised),
+                )
+            }
+        }
+        Text(
+            "Step $step of $total · ${labels.getOrElse(step - 1) { "" }}",
+            color = accent,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+fun ContentBlock(title: String, body: String? = null, content: @Composable () -> Unit) {
+    SurfaceCard(elevation = ElevationMid) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (body != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(body, color = Muted)
+        }
+        Spacer(Modifier.height(14.dp))
+        content()
+    }
+}
+
+@Composable
+fun SurfaceCard(
+    modifier: Modifier = Modifier,
+    elevation: Dp = ElevationMid,
+    accent: Color? = null,
+    onClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        colors = CardDefaults.cardColors(containerColor = if (accent != null) PitchGlass else PitchCard),
+        shape = RoundedCornerShape(RadiusLg),
+        elevation = CardDefaults.cardElevation(defaultElevation = elevation),
+        border = if (accent != null) androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.45f)) else null,
+        content = {
+            Column(
+                Modifier
+                    .then(
+                        if (accent != null) {
+                            Modifier.background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.16f), Color.Transparent)))
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .padding(18.dp),
+                content = { content() },
+            )
+        },
+    )
+}
+
+@Composable
+fun SelectableTile(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+    leading: (@Composable () -> Unit)? = null,
+) {
+    val background by animateColorAsState(if (selected) accent.copy(alpha = 0.18f) else PitchRaised)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(background)
+            .border(1.dp, if (selected) accent else Color.Transparent, RoundedCornerShape(RadiusMd))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        leading?.invoke()
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, color = if (selected) accent else Ink)
+            Text(subtitle, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Text(if (selected) "Selected" else "Tap", color = if (selected) accent else Muted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+    }
+}
+
+@Composable
+fun MatchupBanner(teamA: String, teamB: String, detail: String, accent: Color) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusLg))
+            .background(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.85f), ActionCoralDeep.copy(alpha = 0.9f))))
+            .padding(18.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("MATCHUP", color = SoftWhite.copy(alpha = 0.8f), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(teamA, color = SoftWhite, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(SoftWhite.copy(alpha = 0.18f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                ) { Text("VS", color = SoftWhite, fontWeight = FontWeight.Black) }
+                Text(teamB, color = SoftWhite, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+            }
+            Text(detail, color = SoftWhite.copy(alpha = 0.9f))
+        }
+    }
+}
+
+@Composable
+fun ActionDock(content: @Composable () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = RadiusLg, topEnd = RadiusLg))
+            .background(PitchCard)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        content = { content() },
+    )
+}
+
+@Composable
+fun BottomSheet(
+    onDismiss: () -> Unit,
+    title: String,
+    subtitle: String? = null,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxSize().zIndex(20f)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.55f))
+                .clickable(onClick = onDismiss),
+        )
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.88f)
+                .clip(RoundedCornerShape(topStart = RadiusXl, topEnd = RadiusXl))
+                .background(PitchCard),
+        ) {
+            Box(
+                Modifier
+                    .padding(top = 10.dp)
+                    .align(Alignment.CenterHorizontally)
+                    .width(42.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(PitchRaised),
+            )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                PageHeading(title, subtitle ?: "")
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateTeamSheet(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var playerDraft by remember { mutableStateOf("") }
+    var players by remember { mutableStateOf(listOf<String>()) }
+    BottomSheet(
+        onDismiss = onDismiss,
+        title = "New team",
+        subtitle = "Name the side, then add players one by one.",
+    ) {
+        ContentBlock("Team details", "This name appears on fixtures and scorecards.") {
+            NameField("Team name", name) { name = it }
+        }
+        ContentBlock("Players", "Add each player separately. You need at least one.") {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Squad list", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                PlayerCountBadge(players.size)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    NameField("Player name", playerDraft) { playerDraft = it }
+                }
+                SecondaryButton("Add", {
+                    val next = playerDraft.trim()
+                    if (next.isNotEmpty() && players.none { it.equals(next, ignoreCase = true) }) {
+                        players = players + next
+                        playerDraft = ""
+                    }
+                })
+            }
+            Spacer(Modifier.size(20.dp))
+            if (players.isEmpty()) {
+                Text("No players yet. Add the first name above.", color = Muted)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    players.forEachIndexed { index, player ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(RadiusMd))
+                                .background(PitchRaised)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            PlayerAvatar(player, ActionCoral, size = 34.dp)
+                            Column(Modifier.weight(1f)) {
+                                Text(player, fontWeight = FontWeight.SemiBold)
+                                Text("Player ${index + 1}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Text(
+                                "Remove",
+                                color = WicketRed,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable { players = players.filterIndexed { i, _ -> i != index } },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        PrimaryButton(
+            "Save team",
+            { onCreate(name, players.joinToString("\n")) },
+            Modifier.fillMaxWidth(),
+            enabled = name.trim().isNotEmpty() && players.isNotEmpty(),
+        )
+        SecondaryButton("Cancel", onDismiss, Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+fun PlayerCountBadge(count: Int) {
+    val ready = count > 0
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (ready) Lawn.copy(alpha = 0.18f) else PitchRaised)
+            .border(1.dp, if (ready) Lawn.copy(alpha = 0.55f) else Color.Transparent, RoundedCornerShape(999.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Text(
+            if (count == 0) "0 players" else if (count == 1) "1 player" else "$count players",
+            color = if (ready) Lawn else Muted,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelLarge,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+fun NavGlyph(label: String, selected: Boolean) {
+    Box(
+        Modifier
+            .size(28.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) Lawn.copy(alpha = 0.2f) else PitchRaised),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (selected) Lawn else Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+    }
 }
 
 @Composable
@@ -72,13 +383,7 @@ fun PitchCard(
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        content = { Column(Modifier.padding(16.dp), content = { content() }) },
-    )
+    SurfaceCard(modifier = modifier, elevation = ElevationMid, onClick = onClick, content = content)
 }
 
 @Composable
@@ -212,17 +517,32 @@ fun StyleMark(style: CricketStyle, modifier: Modifier = Modifier) {
 
 @Composable
 fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.heightIn(min = 48.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Lawn, contentColor = Color(0xFF052117)),
-    ) { Text(text) }
+    Box(
+        modifier = modifier
+            .heightIn(min = 54.dp)
+            .clip(RoundedCornerShape(RadiusMd))
+            .then(
+                if (enabled) Modifier.background(ActionBrush)
+                else Modifier.background(PitchRaised),
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = if (enabled) SoftWhite else Muted, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+    }
 }
 
 @Composable
 fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 48.dp)) { Text(text) }
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 52.dp),
+        shape = RoundedCornerShape(RadiusMd),
+        border = androidx.compose.foundation.BorderStroke(1.dp, PitchRaised),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink),
+    ) { Text(text, fontWeight = FontWeight.SemiBold) }
 }
 
 @Composable
@@ -312,6 +632,13 @@ fun NameField(label: String, value: String, singleLine: Boolean = true, onValue:
         singleLine = singleLine,
         minLines = if (singleLine) 1 else 4,
     )
+}
+
+fun PlayingRole.displayName(): String = when (this) {
+    PlayingRole.BATTER -> "Batter"
+    PlayingRole.BOWLER -> "Bowler"
+    PlayingRole.ALL_ROUNDER -> "All-rounder"
+    PlayingRole.WICKET_KEEPER -> "Wicket-keeper"
 }
 
 fun DismissalType.displayName(): String = when (this) {

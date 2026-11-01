@@ -5,11 +5,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
@@ -20,7 +24,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.engine.MatchEngine
 import com.example.cricketscoring.engine.scoreLine
@@ -37,18 +43,18 @@ private val tabs = listOf("Live", "Upcoming", "Completed", "Rules")
 
 @Composable
 fun MatchesHome(store: CricketStore) {
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Matches", style = MaterialTheme.typography.headlineMedium)
-        Text("Each cricket style has its own list.", color = Muted)
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        PageHeading("Fixtures", "Each cricket style keeps its own list of live, upcoming, and completed matches.")
         CricketStyle.entries.forEach { style ->
             val count = store.data.matches.count { it.style == style }
-            PitchCard(onClick = { store.openStyle(style, fromHome = false) }) {
+            SurfaceCard(elevation = ElevationMid, accent = style.accent(), onClick = { store.openStyle(style, fromHome = false) }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StyleMark(style)
-                    Column {
-                        Text(styleTitle(style), style = MaterialTheme.typography.titleMedium)
-                        Text("$count matches", color = Muted)
+                    Column(Modifier.weight(1f)) {
+                        Text(styleTitle(style), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(if (count == 0) "No fixtures yet" else "$count fixtures", color = Muted)
                     }
+                    Text("Open", color = style.accent(), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -82,17 +88,33 @@ fun StyleHubScreen(store: CricketStore, style: CricketStyle) {
     }.sortedByDescending { it.updatedAtEpochMs }.take(5)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         ScreenHeader(styleTitle(style), onBack = { store.pop() })
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PrimaryButton("Start New Match", { store.openWizard(style) }, Modifier.fillMaxWidth())
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            PageHeading("Fixtures", "Resume a live game, review recent results, or start a new match.")
+            SurfaceCard(elevation = ElevationHigh, accent = style.accent()) {
+                Text("Start a new match", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Pick teams, confirm the format, then begin scoring.", color = Muted)
+                Spacer(Modifier.height(14.dp))
+                PrimaryButton("Start new match", { store.openWizard(style) }, Modifier.fillMaxWidth())
+            }
             if (live.isNotEmpty()) {
-                SectionLabel("Live")
-                live.forEach { match -> MatchRow(match, onOpen = { store.openMatch(match) }, onDuplicate = { store.duplicate(match) }, onDelete = { pendingDelete = match }, onShare = { store.shareText = scorecardText(match) }) }
+                ContentBlock("Live now", "Tap a fixture to continue scoring.") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        live.forEach { match ->
+                            MatchRow(match, onOpen = { store.openMatch(match) }, onDuplicate = { store.duplicate(match) }, onDelete = { pendingDelete = match }, onShare = { store.shareText = scorecardText(match) })
+                        }
+                    }
+                }
             }
             if (completed.isNotEmpty()) {
-                SectionLabel("Recent results")
-                completed.forEach { match -> MatchRow(match, onOpen = { store.openMatch(match) }, onDuplicate = { store.duplicate(match) }, onDelete = { pendingDelete = match }, onShare = { store.shareText = scorecardText(match) }) }
+                ContentBlock("Recent results", "Open a completed scorecard or copy the setup.") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        completed.forEach { match ->
+                            MatchRow(match, onOpen = { store.openMatch(match) }, onDuplicate = { store.duplicate(match) }, onDelete = { pendingDelete = match }, onShare = { store.shareText = scorecardText(match) })
+                        }
+                    }
+                }
             }
-            Disclosure("All matches", "Search, upcoming games, and the recommended rules for this style.") {
+            Disclosure("All fixtures", "Search, upcoming games, and the recommended rules for this style.") {
                 StyleMatchBrowser(store, style, tab, { tab = it }, query, { query = it }, sort, { sort = it }, filtered) { pendingDelete = it }
             }
         }
@@ -159,23 +181,39 @@ private fun StyleMatchBrowser(
 @Composable
 private fun MatchRow(match: Match, onOpen: () -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit, onShare: () -> Unit) {
     val derived = MatchEngine.derive(match)
-    PitchCard(onClick = onOpen) {
-        Text(derived.status.displayName(), color = match.style.accent(), style = MaterialTheme.typography.bodySmall)
-        Text(match.title, style = MaterialTheme.typography.titleMedium)
+    SurfaceCard(elevation = ElevationMid, onClick = onOpen) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(derived.status.displayName(), color = match.style.accent(), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                Text(match.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = "Delete",
+                    tint = WicketRed,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         if (derived.innings.isEmpty()) {
             Text(match.venue.ifBlank { "Squads and rules are saved" }, color = Muted)
         } else {
             derived.innings.filter { !it.superOver }.forEach { innings ->
-                Text("${match.teamShort(innings.battingTeamId)} ${innings.scoreLine()}", style = MaterialTheme.typography.bodyLarge)
+                Text("${match.teamShort(innings.battingTeamId)} ${innings.scoreLine()}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             }
             derived.equation?.let { Text(it, color = Gold) }
             derived.result?.summary?.let { Text(it, color = Lawn) }
         }
+        Spacer(Modifier.height(8.dp))
         InlineActions(
             "Open" to onOpen,
             "Copy setup" to onDuplicate,
             "Share" to onShare,
-            "Delete" to onDelete,
         )
     }
 }

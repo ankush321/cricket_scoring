@@ -11,12 +11,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.persist.CodecRepository
 import com.example.cricketscoring.persist.STORE_KEY
@@ -24,9 +26,12 @@ import com.example.cricketscoring.persist.copyToClipboard
 import com.example.cricketscoring.persist.platformStore
 import com.example.cricketscoring.ui.CricketStore
 import com.example.cricketscoring.ui.HomeScreen
+import com.example.cricketscoring.ui.Lawn
 import com.example.cricketscoring.ui.LiveScreen
 import com.example.cricketscoring.ui.MatchesHome
 import com.example.cricketscoring.ui.MoreScreen
+import com.example.cricketscoring.ui.Muted
+import com.example.cricketscoring.ui.NavGlyph
 import com.example.cricketscoring.ui.PitchBlack
 import com.example.cricketscoring.ui.PitchCard
 import com.example.cricketscoring.ui.PitchTheme
@@ -59,7 +64,7 @@ fun App() {
 @Composable
 private fun AppFrame(store: CricketStore) {
     val screen = store.screen
-    val hideNav = screen is Screen.Wizard || screen is Screen.Live || screen is Screen.Scorecard || screen is Screen.TeamEdit
+    val hideNav = screen is Screen.Wizard || screen is Screen.Live || screen is Screen.Scorecard
     Scaffold(
         containerColor = PitchBlack,
         bottomBar = { if (!hideNav) AppNav(store) },
@@ -109,12 +114,59 @@ private fun AppFrame(store: CricketStore) {
     }
 }
 
+private enum class AppTab { Home, Fixtures, Teams, Players, More }
+
 @Composable
 private fun AppNav(store: CricketStore) {
-    val screen = store.screen
-    val homeSelected = screen == Screen.Home || screen is Screen.StyleHub || screen == Screen.Matches
+    val tab = when (val screen = store.screen) {
+        Screen.Home -> AppTab.Home
+        Screen.Matches, is Screen.StyleHub -> AppTab.Fixtures
+        Screen.Teams, is Screen.TeamEdit -> AppTab.Teams
+        Screen.Players -> AppTab.Players
+        else -> AppTab.More
+    }
+    val colors = NavigationBarItemDefaults.colors(
+        selectedIconColor = Lawn,
+        selectedTextColor = Lawn,
+        indicatorColor = Color.Transparent,
+        unselectedIconColor = Muted,
+        unselectedTextColor = Muted,
+    )
     NavigationBar(containerColor = PitchBlack) {
-        NavigationBarItem(selected = homeSelected, onClick = { store.go(Screen.Home) }, icon = { Text("H") }, label = { Text("Home") })
-        NavigationBarItem(selected = !homeSelected, onClick = { store.go(Screen.More) }, icon = { Text("•") }, label = { Text("Menu") })
+        NavigationBarItem(
+            selected = tab == AppTab.Home,
+            onClick = { store.go(Screen.Home) },
+            icon = { NavGlyph("HM", tab == AppTab.Home) },
+            label = { Text("Home") },
+            colors = colors,
+        )
+        NavigationBarItem(
+            selected = tab == AppTab.Fixtures,
+            onClick = { store.go(Screen.Matches) },
+            icon = { NavGlyph("FX", tab == AppTab.Fixtures) },
+            label = { Text("Fixtures") },
+            colors = colors,
+        )
+        NavigationBarItem(
+            selected = tab == AppTab.Teams,
+            onClick = { store.go(Screen.Teams) },
+            icon = { NavGlyph("TM", tab == AppTab.Teams) },
+            label = { Text("Teams") },
+            colors = colors,
+        )
+        NavigationBarItem(
+            selected = tab == AppTab.Players,
+            onClick = { store.go(Screen.Players) },
+            icon = { NavGlyph("PL", tab == AppTab.Players) },
+            label = { Text("Players") },
+            colors = colors,
+        )
+        NavigationBarItem(
+            selected = tab == AppTab.More,
+            onClick = { store.go(Screen.More) },
+            icon = { NavGlyph("···", tab == AppTab.More) },
+            label = { Text("More") },
+            colors = colors,
+        )
     }
 }

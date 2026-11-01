@@ -58,6 +58,7 @@ kotlin {
         }
         commonMain.dependencies {
             api(project(":core"))
+            implementation(compose.materialIconsExtended)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)

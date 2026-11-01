@@ -20,31 +20,25 @@ import com.example.cricketscoring.rules.ruleCatalog
 
 @Composable
 fun MoreScreen(store: CricketStore) {
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Menu", style = MaterialTheme.typography.headlineMedium)
-        Text("Teams, players, and records live here so scoring stays simple.", color = Muted)
-        PitchCard(onClick = { store.push(Screen.Teams) }) {
-            Text("Teams", style = MaterialTheme.typography.titleMedium)
-            Text("Create sides and their players.", color = Muted)
-        }
-        PitchCard(onClick = { store.push(Screen.Players) }) {
-            Text("Players", style = MaterialTheme.typography.titleMedium)
-            Text("Names used across every style.", color = Muted)
-        }
-        PitchCard(onClick = { store.push(Screen.Tournaments) }) {
-            Text("Tournaments", style = MaterialTheme.typography.titleMedium)
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        PageHeading("More", "Tournaments, records, rules, and device settings.")
+        SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.Tournaments) }) {
+            Text("Tournaments", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("Group matches and share a rules copy.", color = Muted)
         }
-        PitchCard(onClick = { store.push(Screen.Stats) }) {
-            Text("Statistics", style = MaterialTheme.typography.titleMedium)
+        SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.Stats) }) {
+            Text("Statistics", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("Runs, wickets, and results already scored.", color = Muted)
         }
-        PitchCard(onClick = { store.push(Screen.RulesGuide) }) {
-            Text("Rules guide", style = MaterialTheme.typography.titleMedium)
+        SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.RulesGuide) }) {
+            Text("Rules guide", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("Recommended starting points for each style.", color = Muted)
         }
-        PitchCard(onClick = { store.push(Screen.Settings) }) {
-            Text("Settings", style = MaterialTheme.typography.titleMedium)
+        SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.Settings) }) {
+            Text("Settings", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("This device only. Matches save as you score.", color = Muted)
         }
     }

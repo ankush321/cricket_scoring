@@ -2,7 +2,9 @@ package com.example.cricketscoring.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,7 +15,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.engine.playerStats
 import com.example.cricketscoring.engine.teamRecord
@@ -24,72 +28,110 @@ import com.example.cricketscoring.rules.styleTitle
 
 @Composable
 fun TeamsScreen(store: CricketStore) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Teams", style = MaterialTheme.typography.headlineMedium)
-        Text("Teams and players can be used in every cricket style.", color = Muted)
+    var creating by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        PageHeading("Teams", "Sides and squads used across every cricket style.")
         store.data.teams.filterNot { it.archived }.forEach { team ->
-            PitchCard(onClick = { store.push(Screen.TeamEdit(team.id)) }) {
-                Text(team.name, style = MaterialTheme.typography.titleMedium)
+            SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.TeamEdit(team.id)) }) {
+                Text(team.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(team.playerIds.joinToString { store.playerName(it) }.ifBlank { "No players" }, color = Muted)
             }
         }
-        if (store.data.teams.none { !it.archived }) Text("No teams yet.", color = Muted)
-        PrimaryButton("New team", { store.push(Screen.TeamEdit(null)) })
+        if (store.data.teams.none { !it.archived }) Text("No teams yet. Create one to start a match.", color = Muted)
+        PrimaryButton("New team", { creating = true })
+    }
+    if (creating) {
+        CreateTeamSheet(
+            onDismiss = { creating = false },
+            onCreate = { teamName, players ->
+                val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size])
+                if (team != null) {
+                    creating = false
+                    store.push(Screen.TeamEdit(team.id))
+                }
+            },
+        )
     }
 }
 
 @Composable
 fun TeamEditScreen(store: CricketStore, teamId: String?) {
     val existing = store.data.teams.find { it.id == teamId }
-    var name by remember(teamId) { mutableStateOf(existing?.name.orEmpty()) }
+    if (existing == null) {
+        CreateTeamSheet(
+            onDismiss = { store.pop() },
+            onCreate = { teamName, players ->
+                val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size])
+                if (team != null) {
+                    store.pop()
+                    store.push(Screen.TeamEdit(team.id))
+                }
+            },
+        )
+        return
+    }
+    var name by remember(teamId) { mutableStateOf(existing.name) }
     var playerName by remember { mutableStateOf("") }
-    var creating by remember { mutableStateOf(teamId == null) }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(if (existing == null) "New team" else "Team", onBack = { store.pop() })
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (existing == null || creating) {
-                CreateTeamDialog(
-                    onDismiss = { if (existing == null) store.pop() else creating = false },
-                    onCreate = { teamName, players ->
-                        val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size])
-                        if (team != null) {
-                            store.pop()
-                            store.push(Screen.TeamEdit(team.id))
-                        }
-                    },
-                )
-            }
-            existing?.let { team ->
+        ScreenHeader("Team", onBack = { store.pop() })
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ContentBlock("Team details", "Update the name shown on fixtures.") {
                 NameField("Team name", name) { name = it }
-                PrimaryButton("Save name", {
-                    store.saveTeam(team.copy(name = name.trim().ifBlank { team.name }, shortName = name.trim().take(3).uppercase().ifBlank { team.shortName }))
-                    store.message = "Team saved."
-                })
-                SectionLabel("Players")
-                team.playerIds.forEach { id ->
+                PrimaryButton(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    text = "Save name",
+                    onClick = {
+                        store.saveTeam(
+                            existing.copy(
+                                name = name.trim().ifBlank { existing.name },
+                                shortName = name.trim().take(3).uppercase()
+                                    .ifBlank { existing.shortName },
+                            ),
+                        )
+                        store.message = "Team saved."
+                    })
+            }
+            ContentBlock("Players", "Add names one at a time. Assign captain and keeper below.") {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Squad list", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    PlayerCountBadge(existing.playerIds.size)
+                }
+                existing.playerIds.forEach { id ->
                     Text(
                         store.playerName(id) +
-                            (if (id == team.captainId) " · captain" else "") +
-                            (if (id == team.wicketkeeperId) " · keeper" else ""),
+                            (if (id == existing.captainId) " · captain" else "") +
+                            (if (id == existing.wicketkeeperId) " · keeper" else ""),
                     )
                 }
+
                 NameField("Add a player", playerName) { playerName = it }
-                SecondaryButton("Add player", {
-                    store.addPlayerToTeam(team.id, playerName)
-                    playerName = ""
-                })
-                Text("Tap a player to make them captain, then keeper.", color = Muted)
-                team.playerIds.forEach { id ->
-                    SecondaryButton("Captain ${store.playerName(id)}", { store.saveTeam(team.copy(captainId = id)) })
+
+                SecondaryButton(
+                    modifier = Modifier.padding(top = 8.dp),
+                    text = "Add player",
+                    onClick = {
+                        store.addPlayerToTeam(existing.id, playerName)
+                        playerName = ""
+                    }
+                )
+            }
+            ContentBlock("Roles", "Captain and keeper default to the first player.") {
+                existing.playerIds.forEach { id ->
+                    SecondaryButton("Captain ${store.playerName(id)}", { store.saveTeam(existing.copy(captainId = id)) })
                 }
-                team.playerIds.forEach { id ->
-                    SecondaryButton("Keeper ${store.playerName(id)}", { store.saveTeam(team.copy(wicketkeeperId = id)) })
+                existing.playerIds.forEach { id ->
+                    SecondaryButton("Keeper ${store.playerName(id)}", { store.saveTeam(existing.copy(wicketkeeperId = id)) })
                 }
-                SectionLabel("Record")
-                teamRecord(store.data, team.id).forEach { record ->
+            }
+            ContentBlock("Record", "Results stay separated by cricket style.") {
+                teamRecord(store.data, existing.id).forEach { record ->
                     Text("${styleTitle(record.style)}  P ${record.played}  W ${record.won}  L ${record.lost}  T ${record.tied}  NR ${record.noResult}")
                 }
-                SecondaryButton(if (team.archived) "Restore team" else "Archive team", { store.archiveTeam(team.id, !team.archived) })
+                SecondaryButton(if (existing.archived) "Restore team" else "Archive team", { store.archiveTeam(existing.id, !existing.archived) })
             }
         }
     }
@@ -99,11 +141,11 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
 fun PlayersScreen(store: CricketStore) {
     var editing by remember { mutableStateOf<Player?>(null) }
     var creating by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ScreenHeader("Players", onBack = { store.pop() })
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        PageHeading("Players", "Names used across every cricket style.")
         store.data.players.sortedBy { it.name }.forEach { player ->
-            PitchCard(onClick = { editing = player }) {
-                Text(player.name, style = MaterialTheme.typography.titleMedium)
+            SurfaceCard(elevation = ElevationMid, onClick = { editing = player }) {
+                Text(player.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 val teams = store.data.teams.filter { player.id in it.playerIds }.joinToString { it.name }
                 if (teams.isNotBlank()) Text(teams, color = Muted)
             }
