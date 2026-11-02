@@ -34,7 +34,7 @@ import com.example.cricketscoring.rules.overarmLimited
 import com.example.cricketscoring.rules.overarmMultiInnings
 import com.example.cricketscoring.rules.styleTitle
 
-private val wizardLabels = listOf("Teams", "Format", "Rules", "Start")
+private val wizardLabels = listOf("Teams", "Format", "Start")
 
 @Composable
 fun WizardScreen(store: CricketStore) {
@@ -49,12 +49,17 @@ fun WizardScreen(store: CricketStore) {
     val edit: ((MatchDraft) -> MatchDraft) -> Unit = { block ->
         store.draft = store.draft?.let(block)
     }
+    val clearGuidance: () -> Unit = {
+        if (draft.guidance != null || draft.focus != null) {
+            edit { it.copy(guidance = null, focus = null) }
+        }
+    }
     var creating by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(
             "New match",
             onBack = {
-                if (draft.step > 1) edit { it.copy(step = it.step - 1) } else {
+                if (draft.step > 1) edit { it.copy(step = it.step - 1, guidance = null, focus = null) } else {
                     store.draft = null
                     store.pop()
                 }
@@ -64,22 +69,29 @@ fun WizardScreen(store: CricketStore) {
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            StepProgress(draft.step, 4, wizardLabels, draft.style.accent())
+            StepProgress(
+                step = draft.step,
+                total = 3,
+                labels = wizardLabels,
+                accent = draft.style.accent(),
+                onStepClick = { target -> edit { it.copy(step = target, guidance = null, focus = null) } },
+            )
+            draft.guidance?.let { guidance ->
+                SetupGuidance(guidance) { clearGuidance() }
+            }
             when (draft.step) {
-                1 -> TeamsStep(store, draft, edit, onCreate = { creating = true })
-                2 -> FormatStep(store, draft, edit)
-                3 -> RulesStep(store, draft, edit)
-                else -> ConfirmStep(store, draft, edit)
+                1 -> TeamsStep(store, draft, edit, onCreate = { creating = true }, onChanged = clearGuidance)
+                2 -> FormatStep(store, draft, edit, onChanged = clearGuidance)
+                else -> ConfirmStep(store, draft, edit, onChanged = clearGuidance)
             }
             Spacer(Modifier.height(8.dp))
         }
         ActionDock {
-            if (draft.step < 4) {
+            if (draft.step < 3) {
                 PrimaryButton(
                     when (draft.step) {
-                        1 -> "Confirm teams"
-                        2 -> "Confirm format"
-                        else -> "Confirm rules"
+                        1 -> "Next · Format"
+                        else -> "Next · Start"
                     },
                     { advance(store, draft, edit) },
                     Modifier.fillMaxWidth(),
@@ -97,7 +109,11 @@ fun WizardScreen(store: CricketStore) {
                 val team = store.createTeam(name, players, teamPalette[store.data.teams.size % teamPalette.size])
                 if (team != null) {
                     edit { current ->
-                        if (current.teamAId == null) current.copy(teamAId = team.id) else current.copy(teamBId = team.id)
+                        if (current.teamAId == null) {
+                            current.copy(teamAId = team.id, guidance = null, focus = null)
+                        } else {
+                            current.copy(teamBId = team.id, guidance = null, focus = null)
+                        }
                     }
                     creating = false
                 }
@@ -107,28 +123,15 @@ fun WizardScreen(store: CricketStore) {
 }
 
 private fun advance(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
-    val problem = when (draft.step) {
-        1 -> when {
-            draft.teamAId == null || draft.teamBId == null -> "Choose both teams."
-            draft.teamAId == draft.teamBId -> "Choose two different teams."
-            else -> null
-        }
-        2 -> when {
-            draft.rules.squad.playersPerTeam !in 2..15 -> "Use between 2 and 15 players."
-            draft.rules.overs.ballsPerOver !in 1..10 -> "Use between 1 and 10 balls in an over."
-            draft.rules.overs.inningsPerTeam !in 1..2 -> "Use 1 or 2 innings a side."
-            draft.rules.overs.oversPerInnings == null && draft.rules.overs.inningsPerTeam == 1 -> "Set the overs, or use more than one innings."
-            else -> null
-        }
-        else -> null
-    }
-    if (problem != null) {
-        store.message = problem
+    val issue = wizardIssue(store, draft, requireStartFields = false)
+    if (issue != null && issue.step <= draft.step) {
+        edit { it.copy(step = issue.step, guidance = issue.message, focus = issue.focus) }
+        store.showToast(issue.message, AppToastType.Warning)
         return
     }
     edit { current ->
-        val seeded = if (current.step == 2) seedSquads(store, current) else current
-        seeded.copy(step = current.step + 1)
+        val seeded = if (current.step == 2) seedSquads(store, current).withDefaultOpeners() else current
+        seeded.copy(step = (current.step + 1).coerceAtMost(3), guidance = null, focus = null)
     }
 }
 
@@ -143,28 +146,58 @@ private fun seedSquads(store: CricketStore, draft: MatchDraft): MatchDraft {
     return draft.copy(squadA = seed(draft.teamAId, draft.squadA), squadB = seed(draft.teamBId, draft.squadB))
 }
 
+private fun MatchDraft.withDefaultOpeners(): MatchDraft {
+    val batting = battingFirstId(this) ?: return this
+    val battingSquad = if (batting == teamBId) squadB else squadA
+    val bowlingSquad = if (batting == teamBId) squadA else squadB
+    val striker = strikerId?.takeIf { it in battingSquad } ?: battingSquad.firstOrNull()
+    val nonStriker = if (!rules.squad.twoBatters) {
+        null
+    } else {
+        nonStrikerId?.takeIf { it in battingSquad && it != striker } ?: battingSquad.firstOrNull { it != striker }
+    }
+    val bowler = bowlerId?.takeIf { it in bowlingSquad } ?: bowlingSquad.firstOrNull()
+    return copy(strikerId = striker, nonStrikerId = nonStriker, bowlerId = bowler)
+}
+
 @Composable
-private fun TeamsStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit, onCreate: () -> Unit) {
+private fun TeamsStep(
+    store: CricketStore,
+    draft: MatchDraft,
+    edit: ((MatchDraft) -> MatchDraft) -> Unit,
+    onCreate: () -> Unit,
+    onChanged: () -> Unit,
+) {
     val teams = store.data.teams.filterNot { it.archived }
-    PageHeading("Choose the two sides", "Pick Team A and Team B. You can create a new team if needed.")
+    PageHeading("Choose the two sides", "Only this step is required before format. Create a team if one is missing.")
     if (teams.isEmpty()) {
         EmptyHint("No teams yet", "Add both sides with one player name on each line.", "Create a team", onCreate)
         return
     }
-    ContentBlock("Team A", "Home or first side for this match.") {
+    FocusedBlock(
+        focused = draft.focus == "teamA",
+        title = "Team A",
+        body = "Home or first side for this match.",
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             teams.forEach { team ->
                 TeamPick(team, draft.teamAId == team.id, store, draft.style.accent()) {
-                    edit { it.copy(teamAId = team.id, squadA = emptyList()) }
+                    onChanged()
+                    edit { it.copy(teamAId = team.id, squadA = emptyList(), guidance = null, focus = null) }
                 }
             }
         }
     }
-    ContentBlock("Team B", "The opposing side.") {
+    FocusedBlock(
+        focused = draft.focus == "teamB",
+        title = "Team B",
+        body = "The opposing side.",
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             teams.forEach { team ->
                 TeamPick(team, draft.teamBId == team.id, store, draft.style.accent()) {
-                    edit { it.copy(teamBId = team.id, squadB = emptyList()) }
+                    onChanged()
+                    edit { it.copy(teamBId = team.id, squadB = emptyList(), guidance = null, focus = null) }
                 }
             }
         }
@@ -185,74 +218,101 @@ private fun TeamPick(team: Team, selected: Boolean, store: CricketStore, accent:
 }
 
 @Composable
-private fun FormatStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
+private fun FormatStep(
+    store: CricketStore,
+    draft: MatchDraft,
+    edit: ((MatchDraft) -> MatchDraft) -> Unit,
+    onChanged: () -> Unit,
+) {
     val teamA = store.data.teams.find { it.id == draft.teamAId }
     val teamB = store.data.teams.find { it.id == draft.teamBId }
-    PageHeading("Set the match format", "Keep the defaults if this ground plays a normal game.")
-    ContentBlock("Fixture details", "Name the match and where it is played.") {
+    PageHeading("Set the match format", "Defaults are ready. Change only what this ground needs, then continue.")
+    ContentBlock("Fixture details", "Optional title and ground.") {
         NameField("Match title", draft.title.ifBlank { "${teamA?.name.orEmpty()} v ${teamB?.name.orEmpty()}" }) { value ->
+            onChanged()
             edit { it.copy(title = value) }
         }
         Spacer(Modifier.height(8.dp))
-        NameField("Ground", draft.venue) { value -> edit { it.copy(venue = value) } }
-    }
-    ContentBlock("Squad and overs", "These numbers become the starting lineup size and overs limit.") {
-    if (draft.style == CricketStyle.OVERARM) {
-        SectionLabel("Format preset")
-        Text("Presets fill a starting point. Change any number after you pick one.", color = Muted)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("T10" to overarmLimited(10, "T10"), "T20" to overarmLimited(20, "T20"), "50 overs" to overarmLimited(50, "50 overs"), "Multi-innings" to overarmMultiInnings()).forEach { (label, preset) ->
-                SecondaryButton(label, {
-                    edit { it.copy(rules = preset.copy(id = it.rules.id), squadA = emptyList(), squadB = emptyList()) }
-                }, Modifier.fillMaxWidth())
-            }
+        NameField("Ground", draft.venue) { value ->
+            onChanged()
+            edit { it.copy(venue = value) }
         }
     }
-    IntField("Players per team", draft.rules.squad.playersPerTeam) { value ->
-        value?.let { count -> edit { it.copy(rules = it.rules.copy(squad = it.rules.squad.copy(playersPerTeam = count)), squadA = emptyList(), squadB = emptyList()) } }
-    }
-    IntField("Balls in an over", draft.rules.overs.ballsPerOver) { value ->
-        value?.let { count -> edit { it.copy(rules = it.rules.copy(overs = it.rules.overs.copy(ballsPerOver = count))) } }
-    }
-    IntField("Overs in an innings (empty means no limit)", draft.rules.overs.oversPerInnings) { value ->
-        edit { it.copy(rules = it.rules.copy(overs = it.rules.overs.copy(oversPerInnings = value))) }
-    }
-    IntField("Innings per team", draft.rules.overs.inningsPerTeam) { value ->
-        value?.let { count ->
-            edit {
-                it.copy(
-                    rules = it.rules.copy(
-                        overs = it.rules.overs.copy(inningsPerTeam = count),
-                        endings = it.rules.endings.copy(declarationsAllowed = count > 1, followOnAllowed = count > 1),
-                    ),
-                )
+    FocusedBlock(
+        focused = draft.focus in setOf("players", "balls", "overs", "innings"),
+        title = "Squad and overs",
+        body = "These numbers set lineup size and overs limit.",
+    ) {
+        if (draft.style == CricketStyle.OVERARM) {
+            SectionLabel("Format preset")
+            Text("Presets fill a starting point. Change any number after you pick one.", color = Muted)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("T10" to overarmLimited(10, "T10"), "T20" to overarmLimited(20, "T20"), "50 overs" to overarmLimited(50, "50 overs"), "Multi-innings" to overarmMultiInnings()).forEach { (label, preset) ->
+                    SecondaryButton(label, {
+                        onChanged()
+                        edit { it.copy(rules = preset.copy(id = it.rules.id), squadA = emptyList(), squadB = emptyList()) }
+                    }, Modifier.fillMaxWidth())
+                }
             }
         }
+        IntField("Players per team", draft.rules.squad.playersPerTeam) { value ->
+            value?.let { count ->
+                onChanged()
+                edit { it.copy(rules = it.rules.copy(squad = it.rules.squad.copy(playersPerTeam = count)), squadA = emptyList(), squadB = emptyList()) }
+            }
+        }
+        IntField("Balls in an over", draft.rules.overs.ballsPerOver) { value ->
+            value?.let { count ->
+                onChanged()
+                edit { it.copy(rules = it.rules.copy(overs = it.rules.overs.copy(ballsPerOver = count))) }
+            }
+        }
+        IntField("Overs in an innings (empty means no limit)", draft.rules.overs.oversPerInnings) { value ->
+            onChanged()
+            edit { it.copy(rules = it.rules.copy(overs = it.rules.overs.copy(oversPerInnings = value))) }
+        }
+        IntField("Innings per team", draft.rules.overs.inningsPerTeam) { value ->
+            value?.let { count ->
+                onChanged()
+                edit {
+                    it.copy(
+                        rules = it.rules.copy(
+                            overs = it.rules.overs.copy(inningsPerTeam = count),
+                            endings = it.rules.endings.copy(declarationsAllowed = count > 1, followOnAllowed = count > 1),
+                        ),
+                    )
+                }
+            }
+        }
+        IntField("Maximum overs per bowler (empty means no cap)", draft.rules.overs.maxOversPerBowler) { value ->
+            onChanged()
+            edit { it.copy(rules = it.rules.copy(overs = it.rules.overs.copy(maxOversPerBowler = value))) }
+        }
     }
-    IntField("Maximum overs per bowler (empty means no cap)", draft.rules.overs.maxOversPerBowler) { value ->
-        edit { it.copy(rules = it.rules.copy(overs = it.rules.overs.copy(maxOversPerBowler = value))) }
-    }
+    ContentBlock("Rules", "Recommended rules for ${styleTitle(draft.style)} are already applied.") {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            SecondaryButton("Recommended", {
+                onChanged()
+                val fresh = when (draft.style) {
+                    CricketStyle.UNDERARM_BOX -> boxDefaults()
+                    CricketStyle.UNDERARM_OPEN -> openDefaults()
+                    CricketStyle.OVERARM -> defaultRules(draft.style)
+                }
+                edit { it.copy(rules = fresh.copy(id = it.rules.id)) }
+            }, Modifier.weight(1f))
+            SecondaryButton("Save a copy", { store.saveProfile(draft.rules) }, Modifier.weight(1f))
+        }
+        Disclosure("Advanced rules", "Open only if this ground plays differently.") {
+            RulesEditor(store, draft, edit)
+        }
     }
 }
 
 @Composable
-private fun RulesStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
+private fun RulesEditor(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
     val rules = draft.rules
     fun rules(block: (com.example.cricketscoring.model.RulesProfile) -> com.example.cricketscoring.model.RulesProfile) {
         edit { it.copy(rules = block(it.rules).copy(source = RuleSource.CUSTOM)) }
-    }
-    PageHeading("Confirm the rules", "Recommended rules for ${styleTitle(draft.style)} are ready. Open Advanced rules only if this ground plays differently.")
-    ContentBlock("Starting point", "Use the recommended set unless the organizer asks for changes.") {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        SecondaryButton("Recommended", {
-            val fresh = when (draft.style) {
-                CricketStyle.UNDERARM_BOX -> boxDefaults()
-                CricketStyle.UNDERARM_OPEN -> openDefaults()
-                CricketStyle.OVERARM -> defaultRules(draft.style)
-            }
-            edit { it.copy(rules = fresh.copy(id = it.rules.id)) }
-        }, Modifier.weight(1f))
-        SecondaryButton("Save a copy", { store.saveProfile(rules) }, Modifier.weight(1f))
     }
     val saved = store.data.ruleProfiles.filter { it.style == draft.style } + store.data.tournaments.filter { it.style == draft.style }.map { it.rules.copy(name = it.name) }
     saved.forEach { profile ->
@@ -260,8 +320,6 @@ private fun RulesStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft
             edit { it.copy(rules = profile.copy(id = it.rules.id), tournamentId = store.data.tournaments.find { tournament -> tournament.rules.id == profile.id }?.id) }
         }, Modifier.fillMaxWidth())
     }
-    }
-    Disclosure("Advanced rules", "Custom runs, dismissals, player changes, and team sizes stay on their recommended settings until you open this.") {
     SectionLabel("Match format")
     ToggleRow("Two batters at the crease", rules.squad.twoBatters) { on -> rules { it.copy(squad = it.squad.copy(twoBatters = on)) } }
     ToggleRow("Running between the wickets", rules.boundaries.runningBetweenWicketsEnabled) { on ->
@@ -316,7 +374,6 @@ private fun RulesStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft
         rules { it.copy(overs = it.overs.copy(mustChangeBowlerEachOver = on)) }
     }
     ProvisionsEditor(draft) { block -> rules(block) }
-    }
 }
 
 @Composable
@@ -393,70 +450,89 @@ private fun ProvisionsEditor(draft: MatchDraft, rules: ((RulesProfile) -> RulesP
 }
 
 @Composable
-private fun ConfirmStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
+private fun ConfirmStep(
+    store: CricketStore,
+    draft: MatchDraft,
+    edit: ((MatchDraft) -> MatchDraft) -> Unit,
+    onChanged: () -> Unit,
+) {
     val rules = draft.rules
     var approvalA by remember { mutableStateOf(false) }
     var approvalB by remember { mutableStateOf(false) }
     val teamAName = store.data.teams.find { it.id == draft.teamAId }?.name ?: "Team A"
     val teamBName = store.data.teams.find { it.id == draft.teamBId }?.name ?: "Team B"
-    PageHeading("Ready to start", "Confirm the matchup, who bats first, and the opening lineup.")
+    PageHeading("Ready to start", "Toss, lineup, and organizer check. Missing items jump you back here with a tip.")
     MatchupBanner(
         teamA = teamAName,
         teamB = teamBName,
         detail = "${draft.rules.overs.oversPerInnings ?: "No"} overs · ${draft.rules.squad.playersPerTeam} players · ${draft.rules.overs.inningsPerTeam} innings a side",
         accent = draft.style.accent(),
     )
-    ContentBlock("Who bats first", "Record the toss, or pick the batting side directly.") {
-        TossStep(store, draft, edit)
+    FocusedBlock(
+        focused = draft.focus == "toss",
+        title = "Who bats first",
+        body = "Record the toss, or pick the batting side directly.",
+    ) {
+        TossStep(store, draft, edit, onChanged)
     }
-    ContentBlock("Lineup and openers", "Choose squads, then the first batters and bowler.") {
-        OpenersStep(store, draft, edit)
+    FocusedBlock(
+        focused = draft.focus in setOf("squadA", "squadB", "striker", "nonStriker", "bowler"),
+        title = "Lineup and openers",
+        body = "Squads are pre-filled. Confirm or change the openers.",
+    ) {
+        OpenersStep(store, draft, edit, onChanged)
     }
-    ContentBlock("Rules summary", "These choices stay locked after the first ball.") {
-    SectionLabel("Additional scoring")
-    val enabled = rules.additionalScoring.events.filter { it.enabled }
-    if (enabled.isEmpty()) Text("No extra scoring values.", color = Muted)
-    enabled.forEach { event ->
-        Text("${event.name}: ${event.runs} ${if (event.awardMode == ScoringAwardMode.BONUS) "bonus" else "fixed"}")
-        if (event.description.isNotBlank()) Text(event.description, color = Muted)
-    }
-    SectionLabel("Box Out")
-    Text(if (!rules.boxOut.enabled) "Off" else rules.boxOut.description.ifBlank { "On. Describe the local rule before you start." })
-    SectionLabel("Players")
-    Text("Pre-match transfers: ${yesNo(rules.roster.preMatchTransfersAllowed)}")
-    Text("In-match switching: ${yesNo(rules.roster.inMatchSwitchingAllowed)}")
-    Text("Add players during the match: ${yesNo(rules.roster.allowAddDuringMatch)}")
-    Text("Uneven team sizes: ${yesNo(rules.roster.allowUnevenTeamSizes)}")
-    Text("Player loan: ${yesNo(rules.roster.allowLoanToOpponent)}")
-    Text("Both teams approve changes: ${yesNo(rules.roster.requireBothTeamApproval)}")
-    SectionLabel("Last-man standing")
-    Text(
-        if (!rules.lastMan.enabled) "Off" else "On when a team has at least ${rules.lastMan.minTeamSize} players and ${rules.lastMan.remainingBattersToActivate} batter${if (rules.lastMan.remainingBattersToActivate == 1) "" else "s"} remain.",
-    )
-    SectionLabel("No-ball")
-    Text(if (rules.extras.noBallCreditsBatter) "Runs off the bat count for the batter. The no-ball penalty is an extra." else "Runs off the bat on a no-ball are extras, not batter runs.")
-    Text("The live scorecard, over breakdown, and commentary stay available without leaving the match.")
-    if (rules.roster.preMatchTransfersAllowed) {
-        SectionLabel("Move a player before the start")
-        Text("A transfer changes who plays for which side in this match. A substitution during the match is a separate action.", color = Muted)
-        if (rules.roster.requireBothTeamApproval) {
-            ToggleRow("${store.data.teams.find { it.id == draft.teamAId }?.name ?: "Team A"} approves", approvalA) { approvalA = it }
-            ToggleRow("${store.data.teams.find { it.id == draft.teamBId }?.name ?: "Team B"} approves", approvalB) { approvalB = it }
-        }
-        draft.squadA.forEach { id ->
-            SecondaryButton("Move ${store.playerName(id)} to the other squad", {
-                moveSquadPlayer(store, draft, edit, id, toSquadB = true, approvalA, approvalB)
-            })
-        }
-        draft.squadB.forEach { id ->
-            SecondaryButton("Move ${store.playerName(id)} to the first squad", {
-                moveSquadPlayer(store, draft, edit, id, toSquadB = false, approvalA, approvalB)
-            })
+    FocusedBlock(
+        focused = draft.focus == "confirm",
+        title = "Organizer check",
+        body = "Required before the first ball.",
+    ) {
+        ToggleRow("These rules were checked with the organizer", rules.confirmedByOrganizer) { on ->
+            onChanged()
+            edit { it.copy(rules = it.rules.copy(confirmedByOrganizer = on), guidance = null, focus = null) }
         }
     }
-    ToggleRow("These rules were checked with the organizer", rules.confirmedByOrganizer) { on ->
-        edit { it.copy(rules = it.rules.copy(confirmedByOrganizer = on)) }
-    }
+    Disclosure("Rules locked after start", "Review extras, transfers, and local provisions.") {
+        SectionLabel("Additional scoring")
+        val enabled = rules.additionalScoring.events.filter { it.enabled }
+        if (enabled.isEmpty()) Text("No extra scoring values.", color = Muted)
+        enabled.forEach { event ->
+            Text("${event.name}: ${event.runs} ${if (event.awardMode == ScoringAwardMode.BONUS) "bonus" else "fixed"}")
+            if (event.description.isNotBlank()) Text(event.description, color = Muted)
+        }
+        SectionLabel("Box Out")
+        Text(if (!rules.boxOut.enabled) "Off" else rules.boxOut.description.ifBlank { "On. Describe the local rule before you start." })
+        SectionLabel("Players")
+        Text("Pre-match transfers: ${yesNo(rules.roster.preMatchTransfersAllowed)}")
+        Text("In-match switching: ${yesNo(rules.roster.inMatchSwitchingAllowed)}")
+        Text("Add players during the match: ${yesNo(rules.roster.allowAddDuringMatch)}")
+        Text("Uneven team sizes: ${yesNo(rules.roster.allowUnevenTeamSizes)}")
+        Text("Player loan: ${yesNo(rules.roster.allowLoanToOpponent)}")
+        Text("Both teams approve changes: ${yesNo(rules.roster.requireBothTeamApproval)}")
+        SectionLabel("Last-man standing")
+        Text(
+            if (!rules.lastMan.enabled) "Off" else "On when a team has at least ${rules.lastMan.minTeamSize} players and ${rules.lastMan.remainingBattersToActivate} batter${if (rules.lastMan.remainingBattersToActivate == 1) "" else "s"} remain.",
+        )
+        SectionLabel("No-ball")
+        Text(if (rules.extras.noBallCreditsBatter) "Runs off the bat count for the batter. The no-ball penalty is an extra." else "Runs off the bat on a no-ball are extras, not batter runs.")
+        if (rules.roster.preMatchTransfersAllowed) {
+            SectionLabel("Move a player before the start")
+            Text("A transfer changes who plays for which side in this match.", color = Muted)
+            if (rules.roster.requireBothTeamApproval) {
+                ToggleRow("${store.data.teams.find { it.id == draft.teamAId }?.name ?: "Team A"} approves", approvalA) { approvalA = it }
+                ToggleRow("${store.data.teams.find { it.id == draft.teamBId }?.name ?: "Team B"} approves", approvalB) { approvalB = it }
+            }
+            draft.squadA.forEach { id ->
+                SecondaryButton("Move ${store.playerName(id)} to the other squad", {
+                    moveSquadPlayer(store, draft, edit, id, toSquadB = true, approvalA, approvalB)
+                })
+            }
+            draft.squadB.forEach { id ->
+                SecondaryButton("Move ${store.playerName(id)} to the first squad", {
+                    moveSquadPlayer(store, draft, edit, id, toSquadB = false, approvalA, approvalB)
+                })
+            }
+        }
     }
 }
 
@@ -472,7 +548,7 @@ private fun moveSquadPlayer(
     approvalB: Boolean,
 ) {
     if (draft.rules.roster.requireBothTeamApproval && (!approvalA || !approvalB)) {
-        store.message = "Both teams have to approve this transfer."
+        store.showToast("Both teams have to approve this transfer.", AppToastType.Warning)
         return
     }
     edit { current ->
@@ -493,23 +569,52 @@ private fun moveSquadPlayer(
 }
 
 @Composable
-private fun TossStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
+private fun TossStep(
+    store: CricketStore,
+    draft: MatchDraft,
+    edit: ((MatchDraft) -> MatchDraft) -> Unit,
+    onChanged: () -> Unit,
+) {
     val teamA = store.data.teams.find { it.id == draft.teamAId }
     val teamB = store.data.teams.find { it.id == draft.teamBId }
     val accent = draft.style.accent()
-    ToggleRow("No toss", draft.skipToss) { on -> edit { it.copy(skipToss = on) } }
+    ToggleRow("No toss", draft.skipToss) { on ->
+        onChanged()
+        edit { it.copy(skipToss = on).withDefaultOpeners() }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (draft.skipToss) {
             SectionLabel("Who bats first?")
-            teamA?.let { TeamPick(it, draft.manualBattingId == it.id, store, accent) { edit { current -> current.copy(manualBattingId = it.id) } } }
-            teamB?.let { TeamPick(it, draft.manualBattingId == it.id, store, accent) { edit { current -> current.copy(manualBattingId = it.id) } } }
+            teamA?.let {
+                TeamPick(it, draft.manualBattingId == it.id, store, accent) {
+                    onChanged()
+                    edit { current -> current.copy(manualBattingId = it.id).withDefaultOpeners() }
+                }
+            }
+            teamB?.let {
+                TeamPick(it, draft.manualBattingId == it.id, store, accent) {
+                    onChanged()
+                    edit { current -> current.copy(manualBattingId = it.id).withDefaultOpeners() }
+                }
+            }
         } else {
             SectionLabel("Toss won by")
-            teamA?.let { TeamPick(it, draft.tossWinnerId == it.id, store, accent) { edit { current -> current.copy(tossWinnerId = it.id) } } }
-            teamB?.let { TeamPick(it, draft.tossWinnerId == it.id, store, accent) { edit { current -> current.copy(tossWinnerId = it.id) } } }
+            teamA?.let {
+                TeamPick(it, draft.tossWinnerId == it.id, store, accent) {
+                    onChanged()
+                    edit { current -> current.copy(tossWinnerId = it.id).withDefaultOpeners() }
+                }
+            }
+            teamB?.let {
+                TeamPick(it, draft.tossWinnerId == it.id, store, accent) {
+                    onChanged()
+                    edit { current -> current.copy(tossWinnerId = it.id).withDefaultOpeners() }
+                }
+            }
             SectionLabel("Decision")
             ChoiceRow(listOf("Bat" to (draft.tossChoice == TossChoice.BAT), "Bowl" to (draft.tossChoice == TossChoice.BOWL))) { index ->
-                edit { it.copy(tossChoice = if (index == 0) TossChoice.BAT else TossChoice.BOWL) }
+                onChanged()
+                edit { it.copy(tossChoice = if (index == 0) TossChoice.BAT else TossChoice.BOWL).withDefaultOpeners() }
             }
         }
     }
@@ -519,12 +624,17 @@ private fun TossStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft)
 }
 
 @Composable
-private fun OpenersStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDraft) -> MatchDraft) -> Unit) {
+private fun OpenersStep(
+    store: CricketStore,
+    draft: MatchDraft,
+    edit: ((MatchDraft) -> MatchDraft) -> Unit,
+    onChanged: () -> Unit,
+) {
     val battingId = battingFirstId(draft)
     val teamA = store.data.teams.find { it.id == draft.teamAId }
     val teamB = store.data.teams.find { it.id == draft.teamBId }
     if (teamA == null || teamB == null || battingId == null) {
-        Text("Go back and choose the teams and who bats first.")
+        Text("Choose who bats first above, then the openers appear here.", color = Muted)
         return
     }
     val batting = if (battingId == teamB.id) teamB else teamA
@@ -533,51 +643,55 @@ private fun OpenersStep(store: CricketStore, draft: MatchDraft, edit: ((MatchDra
     val squadBSelected = if (bowling.id == teamA.id) draft.squadA else draft.squadB
     val limit = draft.rules.squad.playersPerTeam
     val accent = draft.style.accent()
-    SquadPicker("${batting.name} batting · $limit", batting, squadASelected, limit, store, accent) { selected ->
-        edit { current -> if (batting.id == current.teamAId) current.copy(squadA = selected) else current.copy(squadB = selected) }
+    SquadPicker("${batting.name} batting · $limit", batting, squadASelected, limit, store, accent, focused = draft.focus == "squadA") { selected ->
+        onChanged()
+        edit { current ->
+            val next = if (batting.id == current.teamAId) current.copy(squadA = selected) else current.copy(squadB = selected)
+            next.withDefaultOpeners()
+        }
     }
     Spacer(Modifier.height(8.dp))
-    SquadPicker("${bowling.name} bowling · $limit", bowling, squadBSelected, limit, store, accent) { selected ->
-        edit { current -> if (bowling.id == current.teamAId) current.copy(squadA = selected) else current.copy(squadB = selected) }
+    SquadPicker("${bowling.name} bowling · $limit", bowling, squadBSelected, limit, store, accent, focused = draft.focus == "squadB") { selected ->
+        onChanged()
+        edit { current ->
+            val next = if (bowling.id == current.teamAId) current.copy(squadA = selected) else current.copy(squadB = selected)
+            next.withDefaultOpeners()
+        }
     }
     if (squadASelected.isNotEmpty()) {
         Spacer(Modifier.height(8.dp))
-        SectionLabel("Striker")
+        SectionLabel(if (draft.focus == "striker") "Striker · needed next" else "Striker")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             squadASelected.forEach { id ->
                 LineupPick(store.playerName(id), "Faces the first ball", draft.strikerId == id, accent) {
-                    edit { it.copy(strikerId = id) }
+                    onChanged()
+                    edit { it.copy(strikerId = id, guidance = null, focus = null) }
                 }
             }
         }
         if (draft.rules.squad.twoBatters) {
-            SectionLabel("Non-striker")
+            SectionLabel(if (draft.focus == "nonStriker") "Non-striker · needed next" else "Non-striker")
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 squadASelected.filter { it != draft.strikerId }.forEach { id ->
                     LineupPick(store.playerName(id), "Other end", draft.nonStrikerId == id, accent) {
-                        edit { it.copy(nonStrikerId = id) }
+                        onChanged()
+                        edit { it.copy(nonStrikerId = id, guidance = null, focus = null) }
                     }
                 }
             }
         }
     }
     if (squadBSelected.isNotEmpty()) {
-        SectionLabel(draft.rules.labels.bowlingRole)
+        SectionLabel(if (draft.focus == "bowler") "${draft.rules.labels.bowlingRole} · needed next" else draft.rules.labels.bowlingRole)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             squadBSelected.forEach { id ->
                 LineupPick(store.playerName(id), "Opens the bowling", draft.bowlerId == id, accent) {
-                    edit { it.copy(bowlerId = id) }
+                    onChanged()
+                    edit { it.copy(bowlerId = id, guidance = null, focus = null) }
                 }
             }
         }
     }
-    if (draft.rules.squad.captainRequired || draft.rules.squad.wicketkeeperRequired) {
-        Notice("Captain and wicketkeeper default to the first player in each squad. Change them from the team page before the match if you need someone else.")
-    }
-    SectionLabel("Rules in this match")
-    Text(draft.rules.name, fontWeight = FontWeight.SemiBold)
-    Text("${draft.rules.squad.playersPerTeam} players · ${draft.rules.overs.oversPerInnings ?: "unlimited"} overs · ${draft.rules.overs.ballsPerOver} balls", color = Muted)
-    draft.rules.organizerPrompts.take(3).forEach { prompt -> Notice(prompt) }
 }
 
 @Composable
@@ -588,9 +702,10 @@ private fun SquadPicker(
     limit: Int,
     store: CricketStore,
     accent: androidx.compose.ui.graphics.Color,
+    focused: Boolean = false,
     onChange: (List<String>) -> Unit,
 ) {
-    SectionLabel("$title · ${selected.size} selected")
+    SectionLabel(if (focused) "$title · ${selected.size} selected · needed next" else "$title · ${selected.size} selected")
     if (team.playerIds.size < limit) {
         Notice("${team.name} only has ${team.playerIds.size} players. Add more, or lower the squad size.")
     }

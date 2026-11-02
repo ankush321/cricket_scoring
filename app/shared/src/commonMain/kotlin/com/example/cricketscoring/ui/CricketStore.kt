@@ -79,6 +79,14 @@ data class MatchDraft(
     val strikerId: String? = null,
     val nonStrikerId: String? = null,
     val bowlerId: String? = null,
+    val guidance: String? = null,
+    val focus: String? = null,
+)
+
+data class WizardIssue(
+    val step: Int,
+    val message: String,
+    val focus: String,
 )
 
 class CricketStore(private val repository: AppRepository) {
@@ -87,10 +95,18 @@ class CricketStore(private val repository: AppRepository) {
     var stack by mutableStateOf(listOf<Screen>(Screen.Home))
         private set
     var message by mutableStateOf<String?>(null)
+        private set
+    var messageType by mutableStateOf(AppToastType.Info)
+        private set
     var draft by mutableStateOf<MatchDraft?>(null)
     var shareText by mutableStateOf<String?>(null)
 
     val screen: Screen get() = stack.last()
+
+    fun showToast(message: String, type: AppToastType = AppToastType.Info) {
+        messageType = type
+        this.message = message
+    }
 
     fun dismissMessage() {
         message = null
@@ -138,12 +154,12 @@ class CricketStore(private val repository: AppRepository) {
     fun createTeam(name: String, playerLines: String, color: Int): Team? {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) {
-            message = "Give the team a name."
+            showToast("Give the team a name.", AppToastType.Warning)
             return null
         }
         val names = playerLines.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (names.isEmpty()) {
-            message = "Add at least one player."
+            showToast("Add at least one player.", AppToastType.Warning)
             return null
         }
         val players = names.map { playerName -> Player(freshId("player"), playerName) }
@@ -193,7 +209,7 @@ class CricketStore(private val repository: AppRepository) {
 
     fun savePlayer(player: Player) {
         if (player.name.isBlank()) {
-            message = "A player needs a name."
+            showToast("A player needs a name.", AppToastType.Warning)
             return
         }
         update { current ->
@@ -209,7 +225,7 @@ class CricketStore(private val repository: AppRepository) {
             match.teamA.players.any { it.id == playerId } || match.teamB.players.any { it.id == playerId }
         }
         if (used) {
-            message = "This player is still on a team or in a match."
+            showToast("This player is still on a team or in a match.", AppToastType.Error)
             return
         }
         update { it.copy(players = it.players.filterNot { player -> player.id == playerId }) }
@@ -217,41 +233,27 @@ class CricketStore(private val repository: AppRepository) {
 
     fun commitDraft(start: Boolean) {
         val currentDraft = draft ?: return
+        val issue = wizardIssue(this, currentDraft, requireStartFields = start)
+        if (issue != null) {
+            draft = currentDraft.copy(step = issue.step, guidance = issue.message, focus = issue.focus)
+            showToast(issue.message, AppToastType.Warning)
+            return
+        }
         try {
             val teamA = data.teams.find { it.id == currentDraft.teamAId } ?: error("Choose the first team.")
             val teamB = data.teams.find { it.id == currentDraft.teamBId } ?: error("Choose the second team.")
-            if (teamA.id == teamB.id) error("Choose two different teams.")
             val size = currentDraft.rules.squad.playersPerTeam
             val squadA = currentDraft.squadA.ifEmpty { defaultSquad(teamA, size) }
             val squadB = currentDraft.squadB.ifEmpty { defaultSquad(teamB, size) }
-            val uneven = currentDraft.rules.roster.allowUnevenTeamSizes
-            if (!uneven && squadA.size != size) error("${teamA.name} needs $size players in the squad.")
-            if (!uneven && squadB.size != size) error("${teamB.name} needs $size players in the squad.")
-            if (uneven && (squadA.isEmpty() || squadB.isEmpty())) error("Each team needs at least one player.")
-            if (currentDraft.rules.squad.twoBatters && (squadA.size < 2 || squadB.size < 2)) {
-                error("This match needs two batters, so each squad needs at least two players.")
-            }
-            if (start && !currentDraft.rules.confirmedByOrganizer) error("Confirm the match rules before the first ball.")
             val battingFirst = battingFirstId(currentDraft)
-            if (start && battingFirst == null) error("Choose who bats first.")
-            val battingSquad = if (battingFirst == teamB.id) squadB else squadA
-            val bowlingSquad = if (battingFirst == teamB.id) squadA else squadB
             val opening = if (!start) {
                 null
             } else {
-                val striker = currentDraft.strikerId ?: error("Choose the striker.")
-                val nonStriker = if (currentDraft.rules.squad.twoBatters) {
-                    currentDraft.nonStrikerId ?: error("Choose the non-striker.")
-                } else {
-                    null
-                }
-                val bowler = currentDraft.bowlerId ?: error("Choose the opening ${currentDraft.rules.labels.bowlingRole.lowercase()}.")
-                if (striker !in battingSquad || (nonStriker != null && nonStriker !in battingSquad)) {
-                    error("Opening batters have to be in the batting squad.")
-                }
-                if (bowler !in bowlingSquad) error("The opening bowler has to be in the bowling squad.")
-                if (nonStriker != null && nonStriker == striker) error("The striker and non-striker must be different.")
-                OpeningPlayers(striker, nonStriker, bowler)
+                OpeningPlayers(
+                    currentDraft.strikerId!!,
+                    if (currentDraft.rules.squad.twoBatters) currentDraft.nonStrikerId else null,
+                    currentDraft.bowlerId!!,
+                )
             }
             val captainA = currentDraft.captainA ?: squadA.first()
             val captainB = currentDraft.captainB ?: squadB.first()
@@ -295,16 +297,16 @@ class CricketStore(private val repository: AppRepository) {
                 current.copy(matches = matches, tournaments = tournaments)
             }
             draft = null
-            message = if (start) "Match started." else "Match saved."
+            showToast(if (start) "Match started." else "Match saved.", AppToastType.Success)
             stack = listOf(
                 Screen.Home,
                 Screen.StyleHub(created.style),
                 if (start) Screen.Live(created.id) else Screen.StyleHub(created.style),
             ).distinct()
         } catch (error: ScoringException) {
-            message = error.message
+            showToast(error.message ?: "Could not start the match.", AppToastType.Error)
         } catch (error: IllegalStateException) {
-            message = error.message
+            showToast(error.message ?: "Could not start the match.", AppToastType.Error)
         }
     }
 
@@ -318,7 +320,7 @@ class CricketStore(private val repository: AppRepository) {
             )
         }
         if (stack.lastOrNull() is Screen.Live || stack.lastOrNull() is Screen.Scorecard) pop()
-        message = "Match deleted."
+        showToast("Match deleted.", AppToastType.Success)
     }
 
     fun apply(matchId: String, block: (Match) -> com.example.cricketscoring.model.EngineOutcome) {
@@ -329,7 +331,7 @@ class CricketStore(private val repository: AppRepository) {
             val saved = updated.copy(updatedAtEpochMs = nowMillis())
             update { current -> current.copy(matches = current.matches.map { if (it.id == matchId) saved else it }) }
         } else {
-            message = outcome.message ?: "That action is not allowed."
+            showToast(outcome.message ?: "That action is not allowed.", AppToastType.Error)
         }
     }
 
@@ -395,12 +397,12 @@ class CricketStore(private val repository: AppRepository) {
     fun saveProfile(rules: RulesProfile) {
         val stored = rules.copy(id = freshId("profile"), source = com.example.cricketscoring.model.RuleSource.CUSTOM)
         update { it.copy(ruleProfiles = it.ruleProfiles + stored) }
-        message = "Rules saved for later matches."
+        showToast("Rules saved for later matches.", AppToastType.Success)
     }
 
     fun createTournament(name: String, style: CricketStyle) {
         if (name.isBlank()) {
-            message = "Give the tournament a name."
+            showToast("Give the tournament a name.", AppToastType.Warning)
             return
         }
         val tournament = Tournament(
@@ -422,7 +424,7 @@ class CricketStore(private val repository: AppRepository) {
         repository.save(data)
         draft = null
         stack = listOf(Screen.Home)
-        message = "Local scores cleared."
+        showToast("Local scores cleared.", AppToastType.Success)
     }
 
     fun playerName(id: String): String = data.players.find { it.id == id }?.name ?: id
@@ -442,14 +444,18 @@ class CricketStore(private val repository: AppRepository) {
         wicketkeeperId = keeper,
     )
 
-    private fun defaultSquad(team: Team, size: Int): List<String> {
+    internal fun defaultSquad(team: Team, size: Int): List<String> {
         val preferred = listOfNotNull(team.captainId, team.wicketkeeperId) + team.playerIds
         return preferred.distinct().filter { it in team.playerIds }.take(size)
     }
 
     private fun draftFrom(match: Match): MatchDraft {
         val derived = MatchEngine.derive(match)
-        val step = if (match.opening != null || derived.status != MatchStatus.UPCOMING) 5 else if (match.toss != null) 4 else 3
+        val step = when {
+            match.opening != null || derived.status != MatchStatus.UPCOMING -> 3
+            match.toss != null -> 3
+            else -> 3
+        }
         return MatchDraft(
             style = match.style,
             step = step,
@@ -484,6 +490,63 @@ fun battingFirstId(draft: MatchDraft): String? {
     val choice = draft.tossChoice ?: return null
     val other = if (winner == draft.teamAId) draft.teamBId else draft.teamAId
     return if (choice == TossChoice.BAT) winner else other
+}
+
+fun wizardIssue(store: CricketStore, draft: MatchDraft, requireStartFields: Boolean): WizardIssue? {
+    val teamA = store.data.teams.find { it.id == draft.teamAId }
+    val teamB = store.data.teams.find { it.id == draft.teamBId }
+    when {
+        teamA == null -> return WizardIssue(1, "Pick Team A to continue.", "teamA")
+        teamB == null -> return WizardIssue(1, "Pick Team B to continue.", "teamB")
+        teamA.id == teamB.id -> return WizardIssue(1, "Choose two different teams.", "teamB")
+    }
+    val size = draft.rules.squad.playersPerTeam
+    when {
+        size !in 2..15 -> return WizardIssue(2, "Set players per team between 2 and 15.", "players")
+        draft.rules.overs.ballsPerOver !in 1..10 -> return WizardIssue(2, "Set balls in an over between 1 and 10.", "balls")
+        draft.rules.overs.inningsPerTeam !in 1..2 -> return WizardIssue(2, "Use 1 or 2 innings a side.", "innings")
+        draft.rules.overs.oversPerInnings == null && draft.rules.overs.inningsPerTeam == 1 ->
+            return WizardIssue(2, "Set overs for the innings, or switch to multi-innings.", "overs")
+    }
+    if (!requireStartFields) return null
+    val sideA = teamA ?: return WizardIssue(1, "Pick Team A to continue.", "teamA")
+    val sideB = teamB ?: return WizardIssue(1, "Pick Team B to continue.", "teamB")
+    val squadA = draft.squadA.ifEmpty { store.defaultSquad(sideA, size) }
+    val squadB = draft.squadB.ifEmpty { store.defaultSquad(sideB, size) }
+    val uneven = draft.rules.roster.allowUnevenTeamSizes
+    when {
+        !uneven && squadA.size != size ->
+            return WizardIssue(3, "${sideA.name} needs $size players selected for this match.", "squadA")
+        !uneven && squadB.size != size ->
+            return WizardIssue(3, "${sideB.name} needs $size players selected for this match.", "squadB")
+        uneven && (squadA.isEmpty() || squadB.isEmpty()) ->
+            return WizardIssue(3, "Each side needs at least one selected player.", "squadA")
+        draft.rules.squad.twoBatters && (squadA.size < 2 || squadB.size < 2) ->
+            return WizardIssue(3, "Each squad needs at least two players for two batters.", "squadA")
+        battingFirstId(draft) == null ->
+            return WizardIssue(
+                3,
+                if (draft.skipToss) "Choose which team bats first." else "Record the toss winner and bat/bowl decision.",
+                "toss",
+            )
+    }
+    val battingFirst = battingFirstId(draft)
+    val battingSquad = if (battingFirst == sideB.id) squadB else squadA
+    val bowlingSquad = if (battingFirst == sideB.id) squadA else squadB
+    val bowlingRole = draft.rules.labels.bowlingRole.lowercase()
+    return when {
+        draft.strikerId == null || draft.strikerId !in battingSquad ->
+            WizardIssue(3, "Choose the striker from the batting squad.", "striker")
+        draft.rules.squad.twoBatters && (draft.nonStrikerId == null || draft.nonStrikerId !in battingSquad) ->
+            WizardIssue(3, "Choose the non-striker from the batting squad.", "nonStriker")
+        draft.rules.squad.twoBatters && draft.nonStrikerId == draft.strikerId ->
+            WizardIssue(3, "Striker and non-striker must be different players.", "nonStriker")
+        draft.bowlerId == null || draft.bowlerId !in bowlingSquad ->
+            WizardIssue(3, "Choose the opening $bowlingRole from the bowling side.", "bowler")
+        !draft.rules.confirmedByOrganizer ->
+            WizardIssue(3, "Tick that the organizer checked these rules before the first ball.", "confirm")
+        else -> null
+    }
 }
 
 private fun shortName(name: String): String {

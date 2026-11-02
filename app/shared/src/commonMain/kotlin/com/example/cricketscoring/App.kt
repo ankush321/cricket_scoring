@@ -24,6 +24,8 @@ import com.example.cricketscoring.persist.CodecRepository
 import com.example.cricketscoring.persist.STORE_KEY
 import com.example.cricketscoring.persist.copyToClipboard
 import com.example.cricketscoring.persist.platformStore
+import com.example.cricketscoring.ui.AppToastHost
+import com.example.cricketscoring.ui.AppToastType
 import com.example.cricketscoring.ui.CricketStore
 import com.example.cricketscoring.ui.HomeScreen
 import com.example.cricketscoring.ui.Lawn
@@ -33,7 +35,6 @@ import com.example.cricketscoring.ui.MoreScreen
 import com.example.cricketscoring.ui.Muted
 import com.example.cricketscoring.ui.NavGlyph
 import com.example.cricketscoring.ui.PitchBlack
-import com.example.cricketscoring.ui.PitchCard
 import com.example.cricketscoring.ui.PitchTheme
 import com.example.cricketscoring.ui.PlayersScreen
 import com.example.cricketscoring.ui.RulesGuideScreen
@@ -47,6 +48,7 @@ import com.example.cricketscoring.ui.TeamsScreen
 import com.example.cricketscoring.ui.TournamentDetailScreen
 import com.example.cricketscoring.ui.TournamentsScreen
 import com.example.cricketscoring.ui.WizardScreen
+import com.example.cricketscoring.ui.AppToastDefaults
 
 @Composable
 fun App() {
@@ -65,37 +67,37 @@ fun App() {
 private fun AppFrame(store: CricketStore) {
     val screen = store.screen
     val hideNav = screen is Screen.Wizard || screen is Screen.Live || screen is Screen.Scorecard
-    Scaffold(
-        containerColor = PitchBlack,
-        bottomBar = { if (!hideNav) AppNav(store) },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            store.message?.let { message ->
-                PitchCard(Modifier.padding(12.dp)) {
-                    Text(message)
-                    TextButton(onClick = { store.dismissMessage() }) { Text("Dismiss") }
-                }
-            }
-            Box(Modifier.weight(1f)) {
-                when (screen) {
-                    Screen.Home -> HomeScreen(store)
-                    Screen.Matches -> MatchesHome(store)
-                    is Screen.StyleHub -> StyleHubScreen(store, screen.style)
-                    Screen.Wizard -> WizardScreen(store)
-                    is Screen.Live -> LiveScreen(store, screen.matchId)
-                    is Screen.Scorecard -> ScorecardScreen(store, screen.matchId)
-                    Screen.Teams -> TeamsScreen(store)
-                    is Screen.TeamEdit -> TeamEditScreen(store, screen.teamId)
-                    Screen.Players -> PlayersScreen(store)
-                    Screen.Tournaments -> TournamentsScreen(store)
-                    is Screen.TournamentDetail -> TournamentDetailScreen(store, screen.tournamentId)
-                    Screen.Stats -> StatsScreen(store)
-                    Screen.More -> MoreScreen(store)
-                    Screen.Settings -> SettingsScreen(store)
-                    Screen.RulesGuide -> RulesGuideScreen(store)
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = PitchBlack,
+            bottomBar = { if (!hideNav) AppNav(store) },
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                Box(Modifier.weight(1f)) {
+                    when (screen) {
+                        Screen.Home -> HomeScreen(store)
+                        Screen.Matches -> MatchesHome(store)
+                        is Screen.StyleHub -> StyleHubScreen(store, screen.style)
+                        Screen.Wizard -> WizardScreen(store)
+                        is Screen.Live -> LiveScreen(store, screen.matchId)
+                        is Screen.Scorecard -> ScorecardScreen(store, screen.matchId)
+                        Screen.Teams -> TeamsScreen(store)
+                        is Screen.TeamEdit -> TeamEditScreen(store, screen.teamId)
+                        Screen.Players -> PlayersScreen(store)
+                        Screen.Tournaments -> TournamentsScreen(store)
+                        is Screen.TournamentDetail -> TournamentDetailScreen(store, screen.tournamentId)
+                        Screen.Stats -> StatsScreen(store)
+                        Screen.More -> MoreScreen(store)
+                        Screen.Settings -> SettingsScreen(store)
+                        Screen.RulesGuide -> RulesGuideScreen(store)
+                    }
                 }
             }
         }
+        AppToastHost(
+            store = store,
+            bottomInset = if (hideNav) AppToastDefaults.BottomPadding else AppToastDefaults.HostBottomClearance,
+        )
     }
     store.shareText?.let { text ->
         AlertDialog(
@@ -105,7 +107,10 @@ private fun AppFrame(store: CricketStore) {
             confirmButton = {
                 TextButton(onClick = {
                     val copied = copyToClipboard(text)
-                    store.message = if (copied) "Scorecard copied." else "Select the scorecard text to copy it."
+                    store.showToast(
+                        if (copied) "Scorecard copied." else "Select the scorecard text to copy it.",
+                        if (copied) AppToastType.Success else AppToastType.Info,
+                    )
                     store.shareText = null
                 }) { Text("Copy") }
             },

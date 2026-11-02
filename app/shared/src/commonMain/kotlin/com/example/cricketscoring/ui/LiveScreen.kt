@@ -836,7 +836,7 @@ private fun RosterActions(store: CricketStore, match: Match, derived: com.exampl
         NameField("New player", name) { name = it }
         listOf(match.teamA, match.teamB).forEach { team ->
             SecondaryButton("Add to ${team.name}", {
-                if (name.isBlank()) store.message = "Name the player being added."
+                if (name.isBlank()) store.showToast("Name the player being added.", AppToastType.Warning)
                 else store.addMatchPlayer(match.id, team.teamId, MatchPlayer(freshId("player"), name.trim()), reason, approvalA, approvalB)
             })
         }
@@ -844,13 +844,13 @@ private fun RosterActions(store: CricketStore, match: Match, derived: com.exampl
     if (roster.inMatchSwitchingAllowed || roster.allowInjuredReplacement) {
         derived.liveTeamA.forEach { player ->
             SecondaryButton("Replace ${player.name}", {
-                if (name.isBlank()) store.message = "Name the incoming player."
+                if (name.isBlank()) store.showToast("Name the incoming player.", AppToastType.Warning)
                 else store.switchPlayer(match.id, match.teamA.teamId, player.id, MatchPlayer(freshId("player"), name.trim()), reason, injured = roster.allowInjuredReplacement && !roster.inMatchSwitchingAllowed, approvalA, approvalB)
             })
         }
         derived.liveTeamB.forEach { player ->
             SecondaryButton("Replace ${player.name}", {
-                if (name.isBlank()) store.message = "Name the incoming player."
+                if (name.isBlank()) store.showToast("Name the incoming player.", AppToastType.Warning)
                 else store.switchPlayer(match.id, match.teamB.teamId, player.id, MatchPlayer(freshId("player"), name.trim()), reason, injured = roster.allowInjuredReplacement && !roster.inMatchSwitchingAllowed, approvalA, approvalB)
             })
         }

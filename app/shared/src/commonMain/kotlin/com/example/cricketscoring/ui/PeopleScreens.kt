@@ -89,7 +89,7 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
                                     .ifBlank { existing.shortName },
                             ),
                         )
-                        store.message = "Team saved."
+                        store.showToast("Team saved.", AppToastType.Success)
                     })
             }
             ContentBlock("Players", "Add names one at a time. Assign captain and keeper below.") {

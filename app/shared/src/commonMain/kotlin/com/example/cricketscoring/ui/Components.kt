@@ -71,7 +71,13 @@ fun PageHeading(title: String, subtitle: String, modifier: Modifier = Modifier) 
 }
 
 @Composable
-fun StepProgress(step: Int, total: Int, labels: List<String>, accent: Color) {
+fun StepProgress(
+    step: Int,
+    total: Int,
+    labels: List<String>,
+    accent: Color,
+    onStepClick: ((Int) -> Unit)? = null,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             repeat(total) { index ->
@@ -81,7 +87,14 @@ fun StepProgress(step: Int, total: Int, labels: List<String>, accent: Color) {
                         .weight(1f)
                         .height(5.dp)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(if (active) accent else PitchRaised),
+                        .background(if (active) accent else PitchRaised)
+                        .then(
+                            if (onStepClick != null && index + 1 < step) {
+                                Modifier.clickable { onStepClick(index + 1) }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
             }
         }
@@ -91,6 +104,49 @@ fun StepProgress(step: Int, total: Int, labels: List<String>, accent: Color) {
             fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.bodyMedium,
         )
+    }
+}
+
+@Composable
+fun SetupGuidance(message: String, onDismiss: (() -> Unit)? = null) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(ActionCoral.copy(alpha = 0.16f))
+            .border(1.dp, ActionCoral.copy(alpha = 0.55f), RoundedCornerShape(RadiusMd))
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Finish this next", color = ActionCoral, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+            Text(message, color = Ink, style = MaterialTheme.typography.bodyLarge)
+        }
+        if (onDismiss != null) {
+            Text("Got it", color = ActionCoral, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onDismiss))
+        }
+    }
+}
+
+@Composable
+fun FocusedBlock(
+    focused: Boolean,
+    title: String,
+    body: String? = null,
+    content: @Composable () -> Unit,
+) {
+    SurfaceCard(
+        elevation = if (focused) ElevationHigh else ElevationMid,
+        accent = if (focused) ActionCoral else null,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (body != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(body, color = Muted)
+        }
+        Spacer(Modifier.height(14.dp))
+        content()
     }
 }
 

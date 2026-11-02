@@ -170,7 +170,7 @@ private fun AddFixtureDialog(store: CricketStore, tournament: com.example.cricke
                     store.saveTournament(tournament.copy(fixtures = tournament.fixtures + newFixture(round, teamA!!, teamB!!)))
                     onDismiss()
                 } else {
-                    store.message = "Choose two different teams."
+                    store.showToast("Choose two different teams.", AppToastType.Warning)
                 }
             }) { Text("Add") }
         },
