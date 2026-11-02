@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.DismissalType
+import com.example.cricketscoring.model.PlayingRole
 import com.example.cricketscoring.model.RuleDisposition
 import com.example.cricketscoring.rules.styleTitle
 

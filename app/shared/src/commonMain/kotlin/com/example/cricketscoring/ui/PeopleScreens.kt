@@ -24,6 +24,7 @@ import com.example.cricketscoring.engine.teamRecord
 import com.example.cricketscoring.engine.twoDecimals
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.Player
+import com.example.cricketscoring.model.PlayingRole
 import com.example.cricketscoring.rules.styleTitle
 
 @Composable
@@ -101,8 +102,10 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
                     PlayerCountBadge(existing.playerIds.size)
                 }
                 existing.playerIds.forEach { id ->
+                    val player = store.data.players.find { it.id == id }
                     Text(
                         store.playerName(id) +
+                            " · ${player?.role?.displayName() ?: "Batter"}" +
                             (if (id == existing.captainId) " · captain" else "") +
                             (if (id == existing.wicketkeeperId) " · keeper" else ""),
                     )
@@ -119,12 +122,19 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
                     }
                 )
             }
-            ContentBlock("Roles", "Captain and keeper default to the first player.") {
-                existing.playerIds.forEach { id ->
-                    SecondaryButton("Captain ${store.playerName(id)}", { store.saveTeam(existing.copy(captainId = id)) })
-                }
-                existing.playerIds.forEach { id ->
-                    SecondaryButton("Keeper ${store.playerName(id)}", { store.saveTeam(existing.copy(wicketkeeperId = id)) })
+            ContentBlock("Roles", "Set each player's role, then pick captain and keeper.") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    existing.playerIds.forEach { id ->
+                        val player = store.data.players.find { it.id == id } ?: return@forEach
+                        PlayerRoleCard(
+                            player = player,
+                            isCaptain = existing.captainId == id,
+                            isKeeper = existing.wicketkeeperId == id,
+                            onRole = { role -> store.savePlayer(player.copy(role = role)) },
+                            onCaptain = { store.saveTeam(existing.copy(captainId = id)) },
+                            onKeeper = { store.saveTeam(existing.copy(wicketkeeperId = id)) },
+                        )
+                    }
                 }
             }
             ContentBlock("Record", "Results stay separated by cricket style.") {
@@ -147,7 +157,10 @@ fun PlayersScreen(store: CricketStore) {
             SurfaceCard(elevation = ElevationMid, onClick = { editing = player }) {
                 Text(player.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 val teams = store.data.teams.filter { player.id in it.playerIds }.joinToString { it.name }
-                if (teams.isNotBlank()) Text(teams, color = Muted)
+                Text(
+                    listOfNotNull(player.role.displayName(), teams.ifBlank { null }).joinToString(" · "),
+                    color = Muted,
+                )
             }
         }
         if (store.data.players.isEmpty()) Text("Players appear here when you add them to a team.", color = Muted)
@@ -155,13 +168,31 @@ fun PlayersScreen(store: CricketStore) {
     }
     if (creating || editing != null) {
         var name by remember(editing?.id) { mutableStateOf(editing?.name.orEmpty()) }
+        var role by remember(editing?.id) { mutableStateOf(editing?.role ?: PlayingRole.BATTER) }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { creating = false; editing = null },
             title = { Text(if (editing == null) "New player" else "Player") },
-            text = { NameField("Name", name) { name = it } },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    NameField("Name", name) { name = it }
+                    Text("Playing role", color = Muted)
+                    ChoiceRow(
+                        listOf(
+                            PlayingRole.BATTER.displayName() to (role == PlayingRole.BATTER),
+                            PlayingRole.BOWLER.displayName() to (role == PlayingRole.BOWLER),
+                        ),
+                    ) { index -> role = if (index == 0) PlayingRole.BATTER else PlayingRole.BOWLER }
+                    ChoiceRow(
+                        listOf(
+                            PlayingRole.ALL_ROUNDER.displayName() to (role == PlayingRole.ALL_ROUNDER),
+                            PlayingRole.WICKET_KEEPER.displayName() to (role == PlayingRole.WICKET_KEEPER),
+                        ),
+                    ) { index -> role = if (index == 0) PlayingRole.ALL_ROUNDER else PlayingRole.WICKET_KEEPER }
+                }
+            },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
-                    val player = editing?.copy(name = name.trim()) ?: Player(freshId("player"), name.trim())
+                    val player = editing?.copy(name = name.trim(), role = role) ?: Player(freshId("player"), name.trim(), role = role)
                     store.savePlayer(player)
                     creating = false
                     editing = null
@@ -175,6 +206,54 @@ fun PlayersScreen(store: CricketStore) {
                 }) { Text(if (editing == null) "Cancel" else "Delete") }
             },
         )
+    }
+}
+
+@Composable
+private fun PlayerRoleCard(
+    player: Player,
+    isCaptain: Boolean,
+    isKeeper: Boolean,
+    onRole: (PlayingRole) -> Unit,
+    onCaptain: () -> Unit,
+    onKeeper: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(player.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("Playing role", color = Muted, style = MaterialTheme.typography.bodySmall)
+        ChoiceRow(
+            listOf(
+                PlayingRole.BATTER.displayName() to (player.role == PlayingRole.BATTER),
+                PlayingRole.BOWLER.displayName() to (player.role == PlayingRole.BOWLER),
+            ),
+        ) { index ->
+            onRole(if (index == 0) PlayingRole.BATTER else PlayingRole.BOWLER)
+        }
+        ChoiceRow(
+            listOf(
+                PlayingRole.ALL_ROUNDER.displayName() to (player.role == PlayingRole.ALL_ROUNDER),
+                PlayingRole.WICKET_KEEPER.displayName() to (player.role == PlayingRole.WICKET_KEEPER),
+            ),
+        ) { index ->
+            onRole(if (index == 0) PlayingRole.ALL_ROUNDER else PlayingRole.WICKET_KEEPER)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            SecondaryButton(
+                if (isCaptain) "Captain ✓" else "Make captain",
+                onCaptain,
+                Modifier.weight(1f),
+            )
+            SecondaryButton(
+                if (isKeeper) "Keeper ✓" else "Make keeper",
+                onKeeper,
+                Modifier.weight(1f),
+            )
+        }
     }
 }
 

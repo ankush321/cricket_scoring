@@ -304,11 +304,19 @@ data class RulesProfile(
     val boxOut: BoxOutRules = BoxOutRules(),
 )
 
+enum class PlayingRole {
+    BATTER,
+    BOWLER,
+    ALL_ROUNDER,
+    WICKET_KEEPER,
+}
+
 @Serializable
 data class Player(
     val id: String,
     val name: String,
     val photoUri: String? = null,
+    val role: PlayingRole = PlayingRole.BATTER,
 )
 
 @Serializable
