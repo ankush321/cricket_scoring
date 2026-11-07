@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -101,6 +102,7 @@ fun LiveScreen(store: CricketStore, matchId: String) {
                 CommonColumn(
                     modifier = Modifier.weight(1f),
                     scrollable = true,
+                    verticalPadding = 0.dp,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     PanelTabs(listOf("Live" to (panel == 0), "Scorecard" to (panel == 1), "Overs" to (panel == 2), "More" to (panel == 3))) {
@@ -377,6 +379,7 @@ private fun ScoringPad(
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
             .background(PitchCard)
+            .navigationBarsPadding()
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
