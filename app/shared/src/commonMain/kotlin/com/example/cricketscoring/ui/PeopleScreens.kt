@@ -1,11 +1,18 @@
 package com.example.cricketscoring.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,8 +22,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.cricketscoring.engine.PlayerStyleStats
 import com.example.cricketscoring.engine.playerStats
 import com.example.cricketscoring.engine.teamRecord
 import com.example.cricketscoring.engine.twoDecimals
@@ -25,6 +37,7 @@ import com.example.cricketscoring.model.Player
 import com.example.cricketscoring.model.PlayingRole
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
+import com.example.cricketscoring.rules.styleSummary
 import com.example.cricketscoring.rules.styleTitle
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -266,36 +279,160 @@ private fun PlayerRoleCard(
 fun StatsScreen(store: CricketStore) {
     val navigator = LocalAppNavigator.current
     var style by remember { mutableStateOf(CricketStyle.UNDERARM_BOX) }
+    val accent = style.accent()
+    val rows = store.data.players.mapNotNull { player ->
+        playerStats(store.data, player.id).find { it.style == style }?.let { player to it }
+    }.sortedByDescending { it.second.runs }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Statistics", onBack = { navigator.back() })
         CommonColumn(
             modifier = Modifier.weight(1f),
             scrollable = true,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-        Text("Figures stay separated by cricket style.", color = Muted)
-        ChoiceRow(CricketStyle.entries.map { styleTitle(it).substringBefore(" ") to (style == it) }) { index ->
-            style = CricketStyle.entries[index]
-        }
-        val rows = store.data.players.mapNotNull { player ->
-            playerStats(store.data, player.id).find { it.style == style }?.let { player to it }
-        }.sortedByDescending { it.second.runs }
-        if (rows.isEmpty()) {
-            Text("No ${styleTitle(style)} statistics yet.", color = Muted)
-        }
-        rows.forEach { (player, stats) ->
-            PitchCard {
-                Text(player.name, style = MaterialTheme.typography.titleMedium)
-                Text("${styleTitle(style)} · ${stats.matches} matches", color = style.accent())
-                val average = if (stats.innings - stats.notOuts == 0) "-" else (stats.runs.toDouble() / (stats.innings - stats.notOuts)).twoDecimals()
-                Text("Batting  ${stats.runs} runs  Ave $average  HS ${stats.highest}  SR ${if (stats.balls == 0) "0.00" else (stats.runs * 100.0 / stats.balls).twoDecimals()}")
-                val economy = if (stats.bowlingBalls == 0) "0.00" else (stats.bowlingRuns * 6.0 / stats.bowlingBalls).twoDecimals()
-                Text("Bowling  ${stats.wickets} wickets  Econ $economy  Ct ${stats.catches}")
-                if (stats.awards > 0) Text("Player of the match ${stats.awards}", color = Gold)
+            StatsStylePicker(style) { style = it }
+            Text(styleTitle(style), color = accent, fontWeight = FontWeight.SemiBold)
+            Text(styleSummary(style), color = Muted, style = MaterialTheme.typography.bodySmall)
+            if (rows.isEmpty()) {
+                PitchCard {
+                    Text("No matches in this style yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Player figures show up here after a ${styleTitle(style)} match is scored.", color = Muted)
+                }
+            }
+            rows.forEach { (player, stats) ->
+                PlayerStatCard(player.name, stats, accent)
             }
         }
+    }
+}
+
+@Composable
+private fun StatsStylePicker(selected: CricketStyle, onSelect: (CricketStyle) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(PitchRaised.copy(alpha = 0.55f))
+            .padding(4.dp),
+    ) {
+        CricketStyle.entries.forEach { item ->
+            val on = item == selected
+            val accent = item.accent()
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (on) accent else Color.Transparent)
+                    .clickable { onSelect(item) }
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    styleChipLabel(item),
+                    color = if (on) Color(0xFF14110A) else Ink,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 13.sp,
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun PlayerStatCard(name: String, stats: PlayerStyleStats, accent: Color) {
+    PitchCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PlayerAvatar(name, accent, size = 42.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    if (stats.awards > 0) {
+                        Text(
+                            if (stats.awards == 1) "Player of the match" else "Player of the match · ${stats.awards}",
+                            color = Gold,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("${stats.matches}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(if (stats.matches == 1) "match" else "matches", color = Muted, fontSize = 11.sp)
+                }
+            }
+            StatBlock(
+                "Batting",
+                listOf(
+                    "${stats.runs}" to "Runs",
+                    battingAverage(stats) to "Average",
+                    "${stats.highest}" to "Best",
+                    strikeRate(stats) to "Strike rate",
+                ),
+            )
+            Text(inningsNote(stats), color = Muted, fontSize = 12.sp)
+            Box(Modifier.fillMaxWidth().height(1.dp).background(SoftWhite.copy(alpha = 0.08f)))
+            StatBlock(
+                "Bowling",
+                listOf(
+                    "${stats.wickets}" to "Wickets",
+                    bowlingEconomy(stats) to "Economy",
+                    "${stats.catches}" to "Catches",
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatBlock(title: String, figures: List<Pair<String, String>>) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, color = Muted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Row(Modifier.fillMaxWidth()) {
+            figures.forEach { (value, label) ->
+                Column(Modifier.weight(1f)) {
+                    Text(value, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1)
+                    Text(label, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+private fun styleChipLabel(style: CricketStyle): String = when (style) {
+    CricketStyle.UNDERARM_BOX -> "Box"
+    CricketStyle.UNDERARM_OPEN -> "Open"
+    CricketStyle.OVERARM -> "Overarm"
+}
+
+private fun battingAverage(stats: PlayerStyleStats): String {
+    val dismissals = stats.innings - stats.notOuts
+    if (dismissals <= 0) return "–"
+    return (stats.runs.toDouble() / dismissals).twoDecimals()
+}
+
+private fun strikeRate(stats: PlayerStyleStats): String {
+    if (stats.balls == 0) return "–"
+    return (stats.runs * 100.0 / stats.balls).twoDecimals()
+}
+
+private fun bowlingEconomy(stats: PlayerStyleStats): String {
+    if (stats.bowlingBalls == 0) return "–"
+    return (stats.bowlingRuns * 6.0 / stats.bowlingBalls).twoDecimals()
+}
+
+private fun inningsNote(stats: PlayerStyleStats): String {
+    val notOut = if (stats.notOuts == 1) "1 not out" else "${stats.notOuts} not out"
+    val fours = if (stats.fours == 1) "1 four" else "${stats.fours} fours"
+    val sixes = if (stats.sixes == 1) "1 six" else "${stats.sixes} sixes"
+    return "${stats.innings} innings · $notOut · $fours · $sixes"
 }
 
 @Preview

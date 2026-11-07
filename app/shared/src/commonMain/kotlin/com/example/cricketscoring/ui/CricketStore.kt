@@ -10,7 +10,6 @@ import com.example.cricketscoring.model.AppData
 import com.example.cricketscoring.model.BallInput
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.EngineCode
-import com.example.cricketscoring.model.Fixture as FixtureModel
 import com.example.cricketscoring.model.Match
 import com.example.cricketscoring.model.MatchEvent
 import com.example.cricketscoring.model.MatchPlayer
@@ -27,6 +26,7 @@ import com.example.cricketscoring.persist.AppRepository
 import com.example.cricketscoring.rules.defaultRules
 import kotlin.random.Random
 import kotlin.time.Clock
+import com.example.cricketscoring.model.Fixture as FixtureModel
 
 private var idSequence = 0
 
@@ -299,6 +299,16 @@ class CricketStore(private val repository: AppRepository) {
 
     fun nextBowler(matchId: String, playerId: String) =
         apply(matchId) { MatchEngine.append(it, MatchEvent.NextBowler(freshId("bowler"), playerId)) }
+
+    fun setBreakMinutes(matchId: String, minutes: Int) {
+        val bounded = minutes.coerceIn(0, 60)
+        update { current ->
+            current.copy(matches = current.matches.map { match ->
+                if (match.id != matchId) match
+                else match.copy(rules = match.rules.copy(endings = match.rules.endings.copy(inningsBreakMinutes = bounded)))
+            })
+        }
+    }
 
     fun startNext(matchId: String, striker: String, nonStriker: String?, bowler: String, superOver: Boolean) {
         val event = if (superOver) {

@@ -174,6 +174,7 @@ data class EndingRules(
     val followOnDeficit: Int? = null,
     val maximumWickets: Int? = null,
     val powerplayOvers: Int? = null,
+    val inningsBreakMinutes: Int = 5,
 )
 
 @Serializable
@@ -224,6 +225,12 @@ data class AdditionalScoringEvent(
     val awardMode: ScoringAwardMode = ScoringAwardMode.FIXED,
     val description: String = "",
 )
+
+fun AdditionalScoringEvent.isZoneOrTargetHit(): Boolean =
+    name.contains("designated", ignoreCase = true) ||
+        name.contains("special target", ignoreCase = true) ||
+        id.endsWith("-8") ||
+        id.endsWith("-9")
 
 @Serializable
 data class AdditionalScoringRules(

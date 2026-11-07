@@ -29,8 +29,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,8 +42,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.cricketscoring.engine.MatchEngine
 import com.example.cricketscoring.engine.currentInnings
 import com.example.cricketscoring.engine.legalDismissals
@@ -62,8 +68,11 @@ import com.example.cricketscoring.model.MatchEvent
 import com.example.cricketscoring.model.MatchPlayer
 import com.example.cricketscoring.model.MatchStatus
 import com.example.cricketscoring.model.SurfaceContact
+import com.example.cricketscoring.model.isZoneOrTargetHit
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
@@ -465,10 +474,54 @@ private fun NextInningsPrompt(store: CricketStore, match: Match, superOver: Bool
     var striker by remember(battingId) { mutableStateOf(batting.players.first().id) }
     var nonStriker by remember(battingId) { mutableStateOf(batting.players.getOrNull(1)?.id) }
     var bowler by remember(battingId) { mutableStateOf(bowling.players.first().id) }
+    val finished = derived.innings.lastOrNull { it.complete }
+    val completed = derived.innings.filter { it.complete }
+    var review by remember { mutableIntStateOf(0) }
+    var reviewed by remember(completed.size) {
+        mutableIntStateOf(completed.indexOfFirst { !it.superOver }.coerceAtLeast(0))
+    }
+    val reviewedInnings = completed.getOrNull(reviewed)
+    val breakStartedAt = remember(match.id, finished?.index) {
+        finished?.deliveries?.lastOrNull()?.timestampEpochMs?.takeIf { it > 0L } ?: nowMillis()
+    }
     CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(if (superOver) "Super Over" else "Next innings", style = MaterialTheme.typography.headlineSmall)
+        PanelTabs(
+            modifier = Modifier.fillMaxWidth(),
+            options = listOf("Break" to (review == 0), "Scorecard" to (review == 1), "Breakdown" to (review == 2)),
+        ) { review = it }
+        if (review != 0) {
+            CompletedInningsPicker(match, completed, reviewed) { reviewed = it }
+            reviewedInnings?.let { innings ->
+                Text(
+                    "${inningsPlace(innings)} · ${match.teamName(innings.battingTeamId)} ${innings.scoreLine()}",
+                    color = Muted,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            if (reviewedInnings == null) {
+                Text("No completed innings to review yet.", color = Muted)
+            } else if (review == 1) {
+                InningsTables(match, reviewedInnings)
+            } else {
+                OversPanel(match, reviewedInnings)
+            }
+            return@CommonColumn
+        }
+        Text(if (superOver) "Super Over" else "Innings break", style = MaterialTheme.typography.headlineSmall)
+        InningsBreakClock(
+            minutes = match.rules.endings.inningsBreakMinutes,
+            startedAtEpochMs = breakStartedAt,
+            onMinutes = { store.setBreakMinutes(match.id, it) },
+        )
+        SectionLabel("Score")
+        derived.innings.filter { it.complete }.forEach { innings ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(match.teamName(innings.battingTeamId), modifier = Modifier.weight(1f))
+                Text(innings.scoreLine(), fontWeight = FontWeight.Bold)
+            }
+        }
+        upcomingTarget(match, derived, superOver)?.let { Text("Target $it", color = Gold, fontWeight = FontWeight.Bold) }
         Text("${batting.name} bat. ${bowling.name} bowl.", color = Muted)
-        derived.innings.lastOrNull { it.complete }?.target?.let { Text("Target $it", color = Gold) }
         if (derived.followOnAvailable) SecondaryButton("Enforce follow-on", { store.followOn(match.id) }, Modifier.fillMaxWidth())
         SectionLabel("Striker")
         batting.players.forEach { PickButton(it.name, striker == it.id) { striker = it.id } }
@@ -484,6 +537,115 @@ private fun NextInningsPrompt(store: CricketStore, match: Match, superOver: Bool
             store.startNext(match.id, striker, if (match.rules.squad.twoBatters) nonStriker else null, bowler, superOver || derived.superOverPending)
         }, Modifier.fillMaxWidth())
     }
+}
+
+@Composable
+private fun InningsBreakClock(minutes: Int, startedAtEpochMs: Long, onMinutes: (Int) -> Unit) {
+    var now by remember { mutableLongStateOf(nowMillis()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(1_000)
+            now = nowMillis()
+        }
+    }
+    val remaining = breakRemainingMillis(minutes, startedAtEpochMs, now)
+    val choices = listOf(2, 5, 10, 15).let { presets -> if (minutes in presets || minutes == 0) presets else (presets + minutes).sorted() }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            if (minutes == 0) "No timer" else clockLabel(remaining),
+            fontSize = 48.sp,
+            fontWeight = FontWeight.Black,
+            color = if (remaining == 0L && minutes > 0) Lawn else Gold,
+        )
+        Text(
+            when {
+                minutes == 0 -> "Set a break if the sides want one. The next innings can start now."
+                remaining == 0L -> "The break is over. Start when both sides are ready."
+                else -> "Review the score during the break. You can start the next innings before the timer ends."
+            },
+            color = Muted,
+        )
+        Text("Break length", color = Muted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            choices.forEach { choice ->
+                val selected = choice == minutes
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (selected) Gold else PitchRaised)
+                        .clickable { onMinutes(choice) }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("$choice min", color = if (selected) Color(0xFF241A05) else Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
+private fun breakRemainingMillis(minutes: Int, startedAtEpochMs: Long, nowEpochMs: Long): Long {
+    if (minutes <= 0) return 0L
+    return (startedAtEpochMs + minutes * 60_000L - nowEpochMs).coerceAtLeast(0L)
+}
+
+private fun clockLabel(remainingMs: Long): String {
+    val totalSeconds = (remainingMs / 1000L).toInt()
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+}
+
+@Composable
+private fun CompletedInningsPicker(
+    match: Match,
+    innings: List<com.example.cricketscoring.model.DerivedInnings>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+) {
+    if (innings.size <= 1) return
+    val accent = match.style.accent()
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        innings.forEachIndexed { index, item ->
+            val active = index == selected
+            Text(
+                inningsPlace(item),
+                color = if (active) Color(0xFF14110A) else Ink,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (active) accent else PitchRaised)
+                    .clickable { onSelect(index) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+private fun inningsPlace(innings: com.example.cricketscoring.model.DerivedInnings): String {
+    if (innings.superOver) return "Super Over"
+    val number = innings.index + 1
+    val suffix = when (number) {
+        1 -> "st"
+        2 -> "nd"
+        3 -> "rd"
+        else -> "th"
+    }
+    return "$number$suffix innings"
+}
+
+private fun upcomingTarget(match: Match, derived: com.example.cricketscoring.model.DerivedMatch, superOver: Boolean): Int? {
+    val completed = derived.innings.filter { it.complete }
+    if (superOver) return completed.lastOrNull { it.superOver }?.runs?.plus(1)
+    if (match.rules.overs.inningsPerTeam == 1 && completed.count { !it.superOver } == 1) {
+        return completed.first { !it.superOver }.runs + 1
+    }
+    return null
 }
 
 @Composable
@@ -544,58 +706,176 @@ private fun WicketDialog(
     var wide by remember { mutableStateOf(false) }
     var noBall by remember { mutableStateOf(false) }
     val types = legalDismissals(match.rules, freeHit, wide, noBall)
-    var type by remember(types) { mutableStateOf(types.firstOrNull() ?: DismissalType.BOWLED) }
+    var type by remember(types) {
+        mutableStateOf(
+            if (wide && DismissalType.STUMPED in types) DismissalType.STUMPED
+            else types.firstOrNull() ?: DismissalType.BOWLED
+        )
+    }
     val crease = listOfNotNull(innings.strikerId, innings.nonStrikerId)
     var batter by remember { mutableStateOf(innings.strikerId ?: crease.first()) }
     var fielder by remember { mutableStateOf(if (innings.bowlingTeamId == match.teamA.teamId) match.teamA.players.first().id else match.teamB.players.first().id) }
     var runs by remember { mutableStateOf(0) }
     if (type !in types && types.isNotEmpty()) type = types.first()
-    AlertDialog(
+    val strikerOnly = type in match.rules.dismissals.strikerOnly
+    val dismissedId = if (strikerOnly) innings.strikerId ?: batter else batter
+    val wideAllowed = !freeHit && match.rules.extras.widesEnabled
+    val noBallAllowed = !freeHit && match.rules.extras.noBallsEnabled
+    val fielders = if (innings.bowlingTeamId == match.teamA.teamId) match.teamA.players else match.teamB.players
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("Wicket") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                types.forEach { option ->
-                    TextButton(onClick = { type = option }) { Text(if (option == type) "● ${option.displayName()}" else option.displayName()) }
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            Modifier
+                .padding(horizontal = 16.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(PitchCard)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Wicket", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(match.playerName(dismissedId), color = WicketRed, fontWeight = FontWeight.SemiBold)
+            }
+            Column(
+                Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                if (freeHit) {
+                    Text("Free hit. Only a run out, obstructing the field, or hitting the ball twice can be out.", color = Muted, fontSize = 13.sp)
                 }
-                if (!freeHit) {
-                    ToggleRow("Wide", wide) { wide = it; if (it) noBall = false }
-                    ToggleRow("No-ball", noBall) { noBall = it; if (it) wide = false }
+                if (wideAllowed || noBallAllowed) {
+                    WicketSection("This ball") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            WicketChoice("Legal", !wide && !noBall, { wide = false; noBall = false }, Modifier.weight(1f))
+                            if (wideAllowed) WicketChoice("Wide", wide, { wide = true; noBall = false }, Modifier.weight(1f))
+                            if (noBallAllowed) WicketChoice("No-ball", noBall, { noBall = true; wide = false }, Modifier.weight(1f))
+                        }
+                    }
                 }
-                if (type !in match.rules.dismissals.strikerOnly) {
-                    Text("Batter", color = Muted)
-                    crease.forEach { id -> TextButton(onClick = { batter = id }) { Text(if (batter == id) "● ${match.playerName(id)}" else match.playerName(id)) } }
+                val ballNote = when {
+                    noBall -> "Only a run out is possible. Either batter can be out."
+                    wide && type == DismissalType.STUMPED -> "Stumped. Only the striker is out."
+                    wide && type == DismissalType.RUN_OUT -> "Run out. Either batter can be out."
+                    else -> null
                 }
-                if (type in match.rules.dismissals.fielderRequired) {
-                    Text("Fielder", color = Muted)
-                    val fielders = if (innings.bowlingTeamId == match.teamA.teamId) match.teamA.players else match.teamB.players
-                    fielders.forEach { player -> TextButton(onClick = { fielder = player.id }) { Text(if (fielder == player.id) "● ${player.name}" else player.name) } }
+                if (ballNote != null) Text(ballNote, color = Muted, fontSize = 13.sp)
+                val choices = if (wide) {
+                    listOf(DismissalType.STUMPED, DismissalType.RUN_OUT).filter { it in types }
+                } else {
+                    types
                 }
-                if (type == DismissalType.RUN_OUT || type == DismissalType.DIRECT_HIT) {
-                    Text("Runs completed: $runs", color = Muted)
-                    Row {
-                        listOf(0, 1, 2, 3).forEach { value -> TextButton(onClick = { runs = value }) { Text("$value") } }
+                val runOutDetails = !wide || type == DismissalType.RUN_OUT
+                if (choices.isEmpty()) {
+                    Text("No dismissal is legal on this ball.", color = Muted)
+                } else if (!noBall && (wide || choices.size > 1)) {
+                    WicketSection(if (wide) "On this wide" else "How") {
+                        choices.chunked(2).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { option ->
+                                    WicketChoice(option.displayName(), option == type, { type = option }, Modifier.weight(1f))
+                                }
+                                if (row.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+                if (runOutDetails && !strikerOnly && crease.size > 1) {
+                    WicketSection("Batter") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            crease.forEach { id ->
+                                WicketChoice(match.playerName(id), batter == id, { batter = id }, Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+                if (runOutDetails && type in match.rules.dismissals.fielderRequired) {
+                    WicketSection("Fielder") {
+                        fielders.chunked(2).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { player ->
+                                    WicketChoice(player.name, fielder == player.id, { fielder = player.id }, Modifier.weight(1f))
+                                }
+                                if (row.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+                if (runOutDetails && (type == DismissalType.RUN_OUT || type == DismissalType.DIRECT_HIT)) {
+                    WicketSection("Runs completed") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(0, 1, 2, 3).forEach { value ->
+                                WicketChoice("$value", runs == value, { runs = value }, Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val strikerOnly = type in match.rules.dismissals.strikerOnly
-                onConfirm(
-                    BallInput(
-                        batterRuns = if (type == DismissalType.RUN_OUT || type == DismissalType.DIRECT_HIT) runs else 0,
-                        wide = wide,
-                        noBall = noBall,
-                        deadBall = type == DismissalType.TIMED_OUT,
-                        dismissal = DismissalInput(type, if (strikerOnly) innings.strikerId ?: batter else batter, if (type in match.rules.dismissals.fielderRequired) fielder else null),
-                        underarmConfirmed = true,
-                    ),
-                )
-            }) { Text("Save wicket") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WicketChoice("Cancel", false, onDismiss, Modifier.weight(1f))
+                Box(
+                    Modifier
+                        .weight(1.4f)
+                        .heightIn(min = 48.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (types.isEmpty()) PitchRaised else WicketRed)
+                        .clickable(enabled = types.isNotEmpty()) {
+                            onConfirm(
+                                BallInput(
+                                    batterRuns = if (type == DismissalType.RUN_OUT || type == DismissalType.DIRECT_HIT) runs else 0,
+                                    wide = wide,
+                                    noBall = noBall,
+                                    deadBall = type == DismissalType.TIMED_OUT,
+                                    dismissal = DismissalInput(
+                                        type,
+                                        dismissedId,
+                                        if (type in match.rules.dismissals.fielderRequired) fielder else null,
+                                    ),
+                                    underarmConfirmed = true,
+                                ),
+                            )
+                        }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Save wicket", color = if (types.isEmpty()) Muted else Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WicketSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        content()
+    }
+}
+
+@Composable
+private fun WicketChoice(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) WicketRed else PitchRaised)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (selected) Color.White else Ink,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable
@@ -1120,8 +1400,7 @@ private fun RosterActions(store: CricketStore, match: Match, derived: com.exampl
     }
 }
 
-private fun AdditionalScoringEvent.isDesignatedScore(): Boolean =
-    name.contains("designated", ignoreCase = true) || id.endsWith("-8")
+private fun AdditionalScoringEvent.isDesignatedScore(): Boolean = isZoneOrTargetHit()
 
 private fun designatedScores(match: Match): List<AdditionalScoringEvent> =
     match.rules.additionalScoring.events.filter { it.enabled && it.isDesignatedScore() }

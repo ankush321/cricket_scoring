@@ -159,11 +159,11 @@ fun ruleCatalog(): List<RuleCatalogRow> = listOf(
     ),
     RuleCatalogRow(
         topic = "Stumped",
-        box = "Off",
-        open = "Off",
+        box = "On",
+        open = "On",
         overarm = "On",
         disposition = RuleDisposition.CONFIGURABLE,
-        note = "Stumping needs the dismissal switched on. It is allowed off a wide, and not off a no-ball or free hit.",
+        note = "Stumping is available on a legal ball and on a wide. The striker is out. It is not allowed off a no-ball or free hit.",
     ),
     RuleCatalogRow(
         topic = "One-tip-one-hand",

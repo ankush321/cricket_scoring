@@ -1,5 +1,9 @@
 package com.example.cricketscoring.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,7 +20,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,6 +37,7 @@ import com.example.cricketscoring.model.RulesProfile
 import com.example.cricketscoring.model.ScoringAwardMode
 import com.example.cricketscoring.model.Team
 import com.example.cricketscoring.model.TossChoice
+import com.example.cricketscoring.model.isZoneOrTargetHit
 import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.boxDefaults
 import com.example.cricketscoring.rules.defaultRules
@@ -58,7 +69,18 @@ fun WizardScreen(store: CricketStore) {
         }
     }
     var creating by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize()) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    Column(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                })
+            },
+    ) {
         ScreenHeader(
             "New match",
             onBack = {
@@ -314,7 +336,7 @@ private fun FormatStep(
         "Set the match format",
         "Defaults are ready. Change only what this ground needs, then continue."
     )
-    ContentBlock("Fixture details", "Optional title and ground.") {
+    CollapsibleBlock("Fixture details", "Optional title and ground.") {
         NameField(
             "Match title",
             draft.title.ifBlank { "${teamA?.name.orEmpty()} v ${teamB?.name.orEmpty()}" }) { value ->
@@ -327,10 +349,11 @@ private fun FormatStep(
             edit { it.copy(venue = value) }
         }
     }
-    FocusedBlock(
-        focused = draft.focus in setOf("players", "balls", "overs", "innings"),
+    CollapsibleBlock(
         title = "Squad and overs",
         body = "These numbers set lineup size and overs limit.",
+        focused = draft.focus in setOf("players", "balls", "overs", "innings"),
+        initiallyOpen = true,
     ) {
         if (draft.style == CricketStyle.OVERARM) {
             SectionLabel("Format preset")
@@ -414,6 +437,22 @@ private fun FormatStep(
         }
         IntField(
             modifier = Modifier.padding(vertical = 8.dp),
+            label = "Break between innings (minutes)",
+            value = draft.rules.endings.inningsBreakMinutes
+        ) { value ->
+            value?.let { minutes ->
+                onChanged()
+                edit {
+                    it.copy(
+                        rules = it.rules.copy(
+                            endings = it.rules.endings.copy(inningsBreakMinutes = minutes.coerceIn(0, 60)),
+                        ),
+                    )
+                }
+            }
+        }
+        IntField(
+            modifier = Modifier.padding(vertical = 8.dp),
             label = "Maximum overs per bowler (empty means no cap)",
             value = draft.rules.overs.maxOversPerBowler
         ) { value ->
@@ -475,7 +514,7 @@ private fun RulesEditor(
             }
         }, Modifier.fillMaxWidth())
     }
-    SectionLabel("Match format")
+    RuleCategory("Match format", "How many batters, and whether they run.") {
     ToggleRow(
         "Two batters at the crease",
         rules.squad.twoBatters
@@ -483,20 +522,8 @@ private fun RulesEditor(
     ToggleRow("Running between the wickets", rules.boundaries.runningBetweenWicketsEnabled) { on ->
         rules { it.copy(boundaries = it.boundaries.copy(runningBetweenWicketsEnabled = on)) }
     }
-    SectionLabel("Scoring rules")
-    ToggleRow("Wides", rules.extras.widesEnabled) { on ->
-        rules {
-            it.copy(
-                extras = it.extras.copy(
-                    widesEnabled = on
-                )
-            )
-        }
     }
-    ToggleRow(
-        "No-balls",
-        rules.extras.noBallsEnabled
-    ) { on -> rules { it.copy(extras = it.extras.copy(noBallsEnabled = on)) } }
+    RuleCategory("Scoring", "Extras, a Super Over, and local scores such as a designated zone.") {
     ToggleRow("Byes", rules.extras.byesEnabled) { on ->
         rules {
             it.copy(
@@ -517,22 +544,12 @@ private fun RulesEditor(
             )
         }
     }
-    ToggleRow(
-        "Fours",
-        rules.boundaries.foursEnabled
-    ) { on -> rules { it.copy(boundaries = it.boundaries.copy(foursEnabled = on)) } }
-    ToggleRow(
-        "Sixes",
-        rules.boundaries.sixesEnabled
-    ) { on -> rules { it.copy(boundaries = it.boundaries.copy(sixesEnabled = on)) } }
-    IntField(
-        "Runs for a four",
-        rules.boundaries.fourRuns
-    ) { value -> value?.let { count -> rules { it.copy(boundaries = it.boundaries.copy(fourRuns = count)) } } }
-    IntField(
-        "Runs for a six",
-        rules.boundaries.sixRuns
-    ) { value -> value?.let { count -> rules { it.copy(boundaries = it.boundaries.copy(sixRuns = count)) } } }
+    if (draft.style == CricketStyle.UNDERARM_BOX) {
+        ToggleRow(
+            "Sixes",
+            rules.boundaries.sixesEnabled
+        ) { on -> rules { it.copy(boundaries = it.boundaries.copy(sixesEnabled = on)) } }
+    }
     ToggleRow("Super Over if the scores are level", rules.tieBreak.superOverEnabled) { on ->
         rules {
             it.copy(
@@ -543,8 +560,14 @@ private fun RulesEditor(
             )
         }
     }
+    ToggleRow(
+        "No-ball runs off the bat count for the batter",
+        rules.extras.noBallCreditsBatter
+    ) { on -> rules { it.copy(extras = it.extras.copy(noBallCreditsBatter = on)) } }
+    AdditionalScoringFields(draft) { block -> rules(block) }
+    }
     if (draft.style == CricketStyle.UNDERARM_BOX) {
-        SectionLabel("Box surfaces")
+        RuleCategory("Box surfaces", "Wall, ceiling, and net scores for this ground.") {
         Text(
             "Leave a box blank to hide that button. Confirm the numbers with the ground.",
             color = Muted
@@ -573,8 +596,9 @@ private fun RulesEditor(
             "Catch off a wall or net",
             rules.dismissals.catchOffWallAllowed
         ) { on -> rules { it.copy(dismissals = it.dismissals.copy(catchOffWallAllowed = on)) } }
+        }
     }
-    SectionLabel("Dismissal rules")
+    RuleCategory("Dismissals", "How a batter can be out.") {
     if (draft.style != CricketStyle.OVERARM) {
         Text("These stay off until this match turns them on.", color = Muted)
         ToggleRow("One-tip-one-hand", rules.local.oneTipOneHandEnabled) { on ->
@@ -623,6 +647,8 @@ private fun RulesEditor(
             }
         }
     }
+    }
+    RuleCategory("Bowling", "Bowler label, a run cap, and a change of bowler each over.") {
     IntField(
         "Maximum runs on one ball (empty means none)",
         rules.extras.maxRunsPerDelivery
@@ -635,15 +661,35 @@ private fun RulesEditor(
     ToggleRow("Require a different bowler each over", rules.overs.mustChangeBowlerEachOver) { on ->
         rules { it.copy(overs = it.overs.copy(mustChangeBowlerEachOver = on)) }
     }
+    }
     ProvisionsEditor(draft) { block -> rules(block) }
 }
 
 @Composable
-private fun ProvisionsEditor(draft: MatchDraft, rules: ((RulesProfile) -> RulesProfile) -> Unit) {
+private fun AdditionalScoringFields(draft: MatchDraft, rules: ((RulesProfile) -> RulesProfile) -> Unit) {
     val profile = draft.rules
-    SectionLabel("Additional scoring rules")
-    Text("These values stay locked after the first ball.", color = Muted)
-    profile.additionalScoring.events.forEach { event ->
+    val zone = zoneHit(profile.additionalScoring.events)
+    val others = profile.additionalScoring.events.filter { !it.isZoneOrTargetHit() }
+    Text(
+        "A designated zone and a special target are one score. It stays locked after the first ball.",
+        color = Muted,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    if (zone != null) {
+        fun saveZone(updated: AdditionalScoringEvent) {
+            rules {
+                it.copy(additionalScoring = it.additionalScoring.copy(events = listOf(updated) + others))
+            }
+        }
+        ToggleRow("Designated zone hit · ${zone.runs}", zone.enabled) { on -> saveZone(zone.copy(enabled = on)) }
+        if (zone.enabled) {
+            IntField("Runs for a designated zone", zone.runs) { value ->
+                value?.let { runs -> saveZone(zone.copy(runs = runs)) }
+            }
+            NameField("How it is awarded", zone.description) { value -> saveZone(zone.copy(description = value)) }
+        }
+    }
+    others.forEach { event ->
         ToggleRow("${event.name} · ${event.runs}", event.enabled) { on ->
             rules {
                 it.copy(additionalScoring = it.additionalScoring.copy(events = it.additionalScoring.events.map { item ->
@@ -717,7 +763,12 @@ private fun ProvisionsEditor(draft: MatchDraft, rules: ((RulesProfile) -> RulesP
             )
         }
     })
-    SectionLabel("Box Out")
+}
+
+@Composable
+private fun ProvisionsEditor(draft: MatchDraft, rules: ((RulesProfile) -> RulesProfile) -> Unit) {
+    val profile = draft.rules
+    RuleCategory("Box Out", "A local dismissal, off until you describe it.") {
     ToggleRow("Box Out", profile.boxOut.enabled) { on ->
         rules {
             it.copy(
@@ -740,7 +791,8 @@ private fun ProvisionsEditor(draft: MatchDraft, rules: ((RulesProfile) -> RulesP
             profile.boxOut.bowlerCredited
         ) { on -> rules { it.copy(boxOut = it.boxOut.copy(bowlerCredited = on)) } }
     }
-    SectionLabel("Last-man standing")
+    }
+    RuleCategory("Last-man standing", "What happens when one batter is left.") {
     ToggleRow(
         "Allow last-man standing",
         profile.lastMan.enabled
@@ -791,7 +843,8 @@ private fun ProvisionsEditor(draft: MatchDraft, rules: ((RulesProfile) -> RulesP
             profile.lastMan.endOnDismissal
         ) { on -> rules { it.copy(lastMan = it.lastMan.copy(endOnDismissal = on)) } }
     }
-    SectionLabel("Player management")
+    }
+    RuleCategory("Player changes", "Transfers, replacements, and loans before or during the match.") {
     val roster = profile.roster
     ToggleRow(
         "Allow player changes before the match",
@@ -823,7 +876,6 @@ private fun ProvisionsEditor(draft: MatchDraft, rules: ((RulesProfile) -> RulesP
             )
         }
     }
-    SectionLabel("Team balancing")
     ToggleRow(
         "Allow uneven teams",
         roster.allowUnevenTeamSizes
@@ -852,11 +904,6 @@ private fun ProvisionsEditor(draft: MatchDraft, rules: ((RulesProfile) -> RulesP
         "Add players only at the end of an over",
         roster.additionsOnlyEndOfOver
     ) { on -> rules { it.copy(roster = it.roster.copy(additionsOnlyEndOfOver = on)) } }
-    ToggleRow(
-        "No-ball runs off the bat count for the batter",
-        profile.extras.noBallCreditsBatter
-    ) { on ->
-        rules { it.copy(extras = it.extras.copy(noBallCreditsBatter = on)) }
     }
 }
 
@@ -882,10 +929,10 @@ private fun ConfirmStep(
         detail = "${draft.rules.overs.oversPerInnings ?: "No"} overs · ${draft.rules.squad.playersPerTeam} players · ${draft.rules.overs.inningsPerTeam} innings a side",
         accent = draft.style.accent(),
     )
-    FocusedBlock(
-        focused = draft.focus == "toss",
+    CollapsibleBlock(
         title = "Who bats first",
         body = "Record the toss, or pick the batting side directly.",
+        focused = draft.focus == "toss",
     ) {
         TossStep(store, draft, edit, onChanged)
     }
@@ -896,10 +943,10 @@ private fun ConfirmStep(
     ) {
         OpenersStep(store, draft, edit, onChanged)
     }
-    FocusedBlock(
-        focused = draft.focus == "confirm",
+    CollapsibleBlock(
         title = "Organizer check",
         body = "Required before the first ball.",
+        focused = draft.focus == "confirm",
     ) {
         ToggleRow("These rules were checked with the organizer", rules.confirmedByOrganizer) { on ->
             onChanged()
@@ -1168,6 +1215,9 @@ private fun OpenersStep(
     val squadBSelected = if (bowling.id == teamA.id) draft.squadA else draft.squadB
     val limit = draft.rules.squad.playersPerTeam
     val accent = draft.style.accent()
+    var strikerOpen by remember { mutableStateOf(true) }
+    var nonStrikerOpen by remember { mutableStateOf(true) }
+    var bowlerOpen by remember { mutableStateOf(true) }
     SquadPicker(
         "${batting.name} batting · $limit",
         batting,
@@ -1208,48 +1258,83 @@ private fun OpenersStep(
     if (squadASelected.isNotEmpty()) {
         Spacer(Modifier.height(8.dp))
         SectionLabel(if (draft.focus == "striker") "Striker · needed next" else "Striker")
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            squadASelected.forEach { id ->
-                LineupPick(
-                    store.playerName(id),
-                    "Faces the first ball",
-                    draft.strikerId == id,
-                    accent
-                ) {
-                    onChanged()
-                    edit { it.copy(strikerId = id, guidance = null, focus = null) }
-                }
+        val strikerId = draft.strikerId
+        if (strikerId != null && !strikerOpen) {
+            LineupPick(store.playerName(strikerId), "Striker · tap to change", true, accent) {
+                strikerOpen = true
             }
-        }
-        if (draft.rules.squad.twoBatters) {
-            SectionLabel(if (draft.focus == "nonStriker") "Non-striker · needed next" else "Non-striker")
+        } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                squadASelected.filter { it != draft.strikerId }.forEach { id ->
+                squadASelected.forEach { id ->
                     LineupPick(
                         store.playerName(id),
-                        "Other end",
-                        draft.nonStrikerId == id,
+                        "Faces the first ball",
+                        strikerId == id,
                         accent
                     ) {
                         onChanged()
-                        edit { it.copy(nonStrikerId = id, guidance = null, focus = null) }
+                        edit { current ->
+                            current.copy(
+                                strikerId = id,
+                                nonStrikerId = current.nonStrikerId.takeIf { it != id },
+                                guidance = null,
+                                focus = null,
+                            )
+                        }
+                        strikerOpen = false
+                        nonStrikerOpen = true
+                    }
+                }
+            }
+        }
+        if (draft.rules.squad.twoBatters && strikerId != null && !strikerOpen) {
+            SectionLabel(if (draft.focus == "nonStriker") "Non-striker · needed next" else "Non-striker")
+            val nonStrikerId = draft.nonStrikerId
+            if (nonStrikerId != null && !nonStrikerOpen) {
+                LineupPick(store.playerName(nonStrikerId), "Non-striker · tap to change", true, accent) {
+                    nonStrikerOpen = true
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    squadASelected.filter { it != strikerId }.forEach { id ->
+                        LineupPick(
+                            store.playerName(id),
+                            "Other end",
+                            nonStrikerId == id,
+                            accent
+                        ) {
+                            onChanged()
+                            edit { it.copy(nonStrikerId = id, guidance = null, focus = null) }
+                            nonStrikerOpen = false
+                            bowlerOpen = true
+                        }
                     }
                 }
             }
         }
     }
-    if (squadBSelected.isNotEmpty()) {
+    val bowlerReady = draft.strikerId != null && !strikerOpen &&
+        (!draft.rules.squad.twoBatters || (draft.nonStrikerId != null && !nonStrikerOpen))
+    if (squadBSelected.isNotEmpty() && bowlerReady) {
         SectionLabel(if (draft.focus == "bowler") "${draft.rules.labels.bowlingRole} · needed next" else draft.rules.labels.bowlingRole)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            squadBSelected.forEach { id ->
-                LineupPick(
-                    store.playerName(id),
-                    "Opens the bowling",
-                    draft.bowlerId == id,
-                    accent
-                ) {
-                    onChanged()
-                    edit { it.copy(bowlerId = id, guidance = null, focus = null) }
+        val bowlerId = draft.bowlerId
+        if (bowlerId != null && !bowlerOpen) {
+            LineupPick(store.playerName(bowlerId), "${draft.rules.labels.bowlingRole} · tap to change", true, accent) {
+                bowlerOpen = true
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                squadBSelected.forEach { id ->
+                    LineupPick(
+                        store.playerName(id),
+                        "Opens the bowling",
+                        bowlerId == id,
+                        accent
+                    ) {
+                        onChanged()
+                        edit { it.copy(bowlerId = id, guidance = null, focus = null) }
+                        bowlerOpen = false
+                    }
                 }
             }
         }
@@ -1293,6 +1378,82 @@ private fun SquadPicker(
 }
 
 @Composable
+private fun CollapsibleBlock(
+    title: String,
+    body: String,
+    focused: Boolean = false,
+    initiallyOpen: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    var open by remember { mutableStateOf(focused || initiallyOpen) }
+    SurfaceCard(
+        elevation = if (focused && open) ElevationHigh else ElevationMid,
+        accent = if (focused && open) ActionCoral else null,
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { open = !open },
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(if (open) "Tap to hide" else body, color = Muted)
+            }
+            Text(if (open) "Hide" else "Show", color = Lawn, fontWeight = FontWeight.Bold)
+        }
+        if (open) {
+            Spacer(Modifier.height(14.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun RuleCategory(title: String, summary: String, content: @Composable () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(PitchBlack.copy(alpha = 0.35f))
+            .border(1.dp, if (open) Lawn.copy(alpha = 0.55f) else SoftWhite.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { open = !open }
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                if (!open) {
+                    Text(summary, color = Muted, fontSize = 12.sp, lineHeight = 16.sp)
+                }
+            }
+            Text(
+                if (open) "Hide" else "Show",
+                color = if (open) Gold else Lawn,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+            )
+        }
+        if (open) {
+            Column(
+                Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
 private fun LineupPick(
     label: String,
     subtitle: String,
@@ -1310,6 +1471,21 @@ private fun LineupPick(
     )
 }
 
+
+private fun zoneHit(events: List<AdditionalScoringEvent>): AdditionalScoringEvent? {
+    val zone = events.filter { it.isZoneOrTargetHit() }
+    val keeper = zone.firstOrNull { it.name.contains("designated", ignoreCase = true) || it.id.endsWith("-8") }
+        ?: zone.firstOrNull()
+        ?: return null
+    val active = zone.firstOrNull { it.enabled }
+    return keeper.copy(
+        name = "Designated zone hit",
+        enabled = zone.any { it.enabled },
+        runs = active?.runs ?: keeper.runs,
+        awardMode = ScoringAwardMode.FIXED,
+        description = keeper.description.ifBlank { "Direct hit into a designated zone or special target." },
+    )
+}
 
 private fun com.example.cricketscoring.model.RulesProfile.withDismissal(
     type: DismissalType,

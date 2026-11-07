@@ -19,7 +19,6 @@ import com.example.cricketscoring.model.MatchEvent
 import com.example.cricketscoring.model.MatchPlayer
 import com.example.cricketscoring.model.MatchResult
 import com.example.cricketscoring.model.MatchStatus
-import com.example.cricketscoring.model.MatchTeam
 import com.example.cricketscoring.model.OpeningPlayers
 import com.example.cricketscoring.model.OverSummary
 import com.example.cricketscoring.model.Partnership
@@ -130,15 +129,15 @@ fun legalDismissals(
     if (deadBall) return enabled.filter { it == DismissalType.TIMED_OUT }
     val ballTypes = enabled.filter {
         it != DismissalType.RETIRED_HURT && it != DismissalType.RETIRED_OUT && it != DismissalType.TIMED_OUT
-    }
+    }.toMutableList()
+    if (!noBall && !freeHit && DismissalType.STUMPED !in ballTypes) ballTypes += DismissalType.STUMPED
     return ballTypes.filter { type ->
         when {
-            freeHit || noBall -> type == DismissalType.RUN_OUT ||
+            noBall -> type == DismissalType.RUN_OUT
+            wide -> type == DismissalType.STUMPED || type == DismissalType.RUN_OUT
+            freeHit -> type == DismissalType.RUN_OUT ||
                 type == DismissalType.OBSTRUCTING_THE_FIELD ||
                 type == DismissalType.HIT_BALL_TWICE
-            wide -> type == DismissalType.RUN_OUT ||
-                type == DismissalType.STUMPED ||
-                type == DismissalType.OBSTRUCTING_THE_FIELD
             else -> true
         }
     }
@@ -579,11 +578,11 @@ private class Replay(val match: Match) {
         if (type == DismissalType.RETIRED_HURT || type == DismissalType.RETIRED_OUT) {
             throw ScoringException("Use retire to record a retired batter. It does not use up a ball.")
         }
-        if (type !in rules.dismissals.enabled) throw ScoringException("${type.label()} is turned off for this match.")
         if (dead && type != DismissalType.TIMED_OUT) throw ScoringException("Only timed out can be recorded on a dead ball.")
         if (!dead && type == DismissalType.TIMED_OUT) throw ScoringException("Timed out is recorded as a dead ball.")
         val allowed = legalDismissals(rules, freeHit, ball.wide, ball.noBall, dead)
         if (type !in allowed) {
+            if (type !in rules.dismissals.enabled) throw ScoringException("${type.label()} is turned off for this match.")
             throw ScoringException("${type.label()} is not allowed on this delivery.")
         }
         val occupants = listOfNotNull(innings.strikerId, innings.nonStrikerId)

@@ -9,6 +9,7 @@ import com.example.cricketscoring.model.Match
 import com.example.cricketscoring.model.MatchEvent
 import com.example.cricketscoring.model.OpeningPlayers
 import com.example.cricketscoring.model.ResultKind
+import com.example.cricketscoring.model.RuleDisposition
 import com.example.cricketscoring.model.RulesProfile
 import com.example.cricketscoring.model.SurfaceContact
 import com.example.cricketscoring.persist.AppJson
@@ -17,7 +18,6 @@ import com.example.cricketscoring.rules.openDefaults
 import com.example.cricketscoring.rules.overarmLimited
 import com.example.cricketscoring.rules.overarmMultiInnings
 import com.example.cricketscoring.rules.ruleCatalog
-import com.example.cricketscoring.model.RuleDisposition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -140,6 +140,44 @@ class ScoringEngineTest {
         ).view()
         assertEquals(1, runOutOnFreeHit.innings.single().wickets)
         assertEquals(0, runOutOnFreeHit.innings.single().bowlingRows.single().wickets)
+
+        val noBallObstructing = overarm().tryBall(
+            BallInput(noBall = true, dismissal = DismissalInput(DismissalType.OBSTRUCTING_THE_FIELD, "A1")),
+            "ob",
+        )
+        assertEquals(EngineCode.REJECTED, noBallObstructing.code)
+        val wideBowled = overarm().tryBall(BallInput(wide = true, dismissal = DismissalInput(DismissalType.BOWLED, "A1")), "wdb")
+        assertEquals(EngineCode.REJECTED, wideBowled.code)
+        val stumped = overarm().ball(
+            BallInput(wide = true, dismissal = DismissalInput(DismissalType.STUMPED, "A1", "B2")),
+            "st",
+        ).view()
+        assertEquals("A1", stumped.innings.single().battingRows.first { it.isOut }.playerId)
+        val nonStrikerStumped = overarm().tryBall(
+            BallInput(wide = true, dismissal = DismissalInput(DismissalType.STUMPED, "A2", "B2")),
+            "st2",
+        )
+        assertEquals(EngineCode.REJECTED, nonStrikerStumped.code)
+        val wideRunOut = overarm().ball(
+            BallInput(wide = true, dismissal = DismissalInput(DismissalType.RUN_OUT, "A2", "B3")),
+            "wro",
+        ).view()
+        assertEquals("A2", wideRunOut.innings.single().battingRows.first { it.isOut }.playerId)
+
+        val withoutStumping = boxDefaults().let { rules ->
+            rules.copy(dismissals = rules.dismissals.copy(enabled = rules.dismissals.enabled.filter { it != DismissalType.STUMPED }))
+        }
+        val legalStumping = live(withoutStumping).ball(
+            BallInput(dismissal = DismissalInput(DismissalType.STUMPED, "A1", "B2")),
+            "boxst",
+        ).view()
+        assertEquals("A1", legalStumping.innings.single().battingRows.first { it.isOut }.playerId)
+        val wideStumping = live(withoutStumping).ball(
+            BallInput(wide = true, dismissal = DismissalInput(DismissalType.STUMPED, "A1", "B2")),
+            "boxwst",
+        ).view()
+        assertEquals(1, wideStumping.innings.single().extras.wides)
+        assertEquals("A1", wideStumping.innings.single().battingRows.first { it.isOut }.playerId)
     }
 
     @Test

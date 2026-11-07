@@ -101,6 +101,7 @@ fun boxDefaults(id: String = "default-box"): RulesProfile = RulesProfile(
         enabled = listOf(
             DismissalType.BOWLED,
             DismissalType.CAUGHT,
+            DismissalType.STUMPED,
             DismissalType.RUN_OUT,
             DismissalType.HIT_WICKET,
             DismissalType.OBSTRUCTING_THE_FIELD,
@@ -125,11 +126,11 @@ fun boxDefaults(id: String = "default-box"): RulesProfile = RulesProfile(
         "Byes and leg-byes are off. Turn them on if this ground counts them.",
         "Wides and no-balls add one run and are bowled again. Confirm both.",
         "A Super Over is off. Enable it only if the competition uses one.",
-        "Additional scoring values such as 8 or 9 stay off until you enable them.",
+        "A designated zone or special target stays off until you set its runs.",
         "Box Out is off until you define what it means at this ground.",
         "Last-man standing is off. The team-size threshold and remaining-batter trigger are separate settings.",
     ),
-    additionalScoring = optionalScoring("zone", "target"),
+    additionalScoring = optionalScoring("zone"),
     lastMan = LastManRules(),
     roster = RosterRules(),
     boxOut = BoxOutRules(description = "Define the local box-out event before enabling it."),
@@ -164,6 +165,7 @@ fun openDefaults(id: String = "default-open"): RulesProfile = RulesProfile(
         enabled = listOf(
             DismissalType.BOWLED,
             DismissalType.CAUGHT,
+            DismissalType.STUMPED,
             DismissalType.RUN_OUT,
             DismissalType.HIT_WICKET,
             DismissalType.OBSTRUCTING_THE_FIELD,
@@ -194,7 +196,7 @@ fun openDefaults(id: String = "default-open"): RulesProfile = RulesProfile(
         "Pitch length and boundary distance are unset. Record them if the ground cares.",
         "Custom scoring values, last-man standing, and player loans stay off until the organizer turns them on.",
     ),
-    additionalScoring = optionalScoring("zone", "special"),
+    additionalScoring = optionalScoring("zone"),
     lastMan = LastManRules(),
     roster = RosterRules(),
     boxOut = BoxOutRules(),
@@ -253,7 +255,7 @@ fun overarmLimited(overs: Int, name: String, id: String = "default-overarm-$over
             "These defaults are a practical limited-overs baseline. They are not an official board publication.",
             "No-ball runs off the bat go to the batter, plus the no-ball extra to the team.",
         ),
-        additionalScoring = optionalScoring("custom", "bonus"),
+        additionalScoring = optionalScoring("custom"),
         lastMan = LastManRules(),
         roster = RosterRules(preMatchTransfersAllowed = true, inMatchSwitchingAllowed = false),
         boxOut = BoxOutRules(),
@@ -345,9 +347,15 @@ fun withLocalDismissals(rules: RulesProfile): RulesProfile {
     return rules.copy(dismissals = rules.dismissals.copy(enabled = enabled.distinct(), bowlerCredited = credited.distinct()))
 }
 
-private fun optionalScoring(first: String, second: String) = AdditionalScoringRules(
+private fun optionalScoring(idPrefix: String) = AdditionalScoringRules(
     events = listOf(
-        AdditionalScoringEvent("${first}-8", "Designated zone hit", 8, enabled = false, awardMode = ScoringAwardMode.FIXED, description = "Direct hit into a designated scoring zone."),
-        AdditionalScoringEvent("${second}-9", "Special target hit", 9, enabled = false, awardMode = ScoringAwardMode.FIXED, description = "Hitting a specific wall, target, or local scoring event."),
+        AdditionalScoringEvent(
+            "$idPrefix-8",
+            "Designated zone hit",
+            8,
+            enabled = false,
+            awardMode = ScoringAwardMode.FIXED,
+            description = "Direct hit into a designated zone or special target.",
+        ),
     ),
 )
