@@ -9,8 +9,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -191,11 +191,11 @@ private fun WarningToastIcon(tint: Color) {
 }
 
 /**
- * WSLF-style toast overlay. Mount once at the app root.
- * Shows [store.message] at the bottom, auto-dismisses, then animates out.
+ * WSLF-style toast overlay. Mount once inside the app root [Box].
+ * Sized only to the toast chip so it does not steal Layout Inspector / pointer hits.
  */
 @Composable
-fun AppToastHost(
+fun BoxScope.AppToastHost(
     store: CricketStore,
     bottomInset: Dp = AppToastDefaults.HostBottomClearance,
     modifier: Modifier = Modifier,
@@ -227,24 +227,22 @@ fun AppToastHost(
         }
     }
 
-    Box(
+    // Skip composing an overlay node when idle — a fillMaxSize host blocks Layout Inspector.
+    if (visibleMessage == null && !toastVisible) return
+
+    AnimatedVisibility(
+        visible = toastVisible && visibleMessage != null,
         modifier = modifier
-            .fillMaxSize()
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .padding(horizontal = AppToastDefaults.HorizontalPadding)
+            .padding(bottom = bottomInset + AppToastDefaults.BottomPadding)
             .zIndex(40f),
-        contentAlignment = Alignment.BottomCenter,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
     ) {
-        AnimatedVisibility(
-            visible = toastVisible && visibleMessage != null,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppToastDefaults.HorizontalPadding)
-                .padding(bottom = bottomInset + AppToastDefaults.BottomPadding),
-            enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-            exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
-        ) {
-            visibleMessage?.let { message ->
-                AppToast(message = message, type = visibleType)
-            }
+        visibleMessage?.let { message ->
+            AppToast(message = message, type = visibleType)
         }
     }
 }
