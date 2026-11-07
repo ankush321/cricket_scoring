@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,15 +23,15 @@ import com.example.cricketscoring.engine.twoDecimals
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.Player
 import com.example.cricketscoring.model.PlayingRole
-import com.example.cricketscoring.rules.styleTitle
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
+import com.example.cricketscoring.rules.styleTitle
 
 @Composable
 fun TeamsScreen(store: CricketStore) {
     val navigator = LocalAppNavigator.current
     var creating by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         store.data.teams.filterNot { it.archived }.forEach { team ->
             SurfaceCard(elevation = ElevationMid, onClick = { navigator.navigate(AppRoute.TeamEdit(team.id)) }) {
                 Text(team.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -78,7 +76,11 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
     var playerName by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Team", onBack = { navigator.back() })
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             ContentBlock("Team details", "Update the name shown on fixtures.") {
                 NameField("Team name", name) { name = it }
                 PrimaryButton(
@@ -154,7 +156,7 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
 fun PlayersScreen(store: CricketStore) {
     var editing by remember { mutableStateOf<Player?>(null) }
     var creating by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         store.data.players.sortedBy { it.name }.forEach { player ->
             SurfaceCard(elevation = ElevationMid, onClick = { editing = player }) {
                 Text(player.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -263,8 +265,13 @@ private fun PlayerRoleCard(
 fun StatsScreen(store: CricketStore) {
     val navigator = LocalAppNavigator.current
     var style by remember { mutableStateOf(CricketStyle.UNDERARM_BOX) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize()) {
         ScreenHeader("Statistics", onBack = { navigator.back() })
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
         Text("Figures stay separated by cricket style.", color = Muted)
         ChoiceRow(CricketStyle.entries.map { styleTitle(it).substringBefore(" ") to (style == it) }) { index ->
             style = CricketStyle.entries[index]
@@ -285,6 +292,7 @@ fun StatsScreen(store: CricketStore) {
                 Text("Bowling  ${stats.wickets} wickets  Econ $economy  Ct ${stats.catches}")
                 if (stats.awards > 0) Text("Player of the match ${stats.awards}", color = Gold)
             }
+        }
         }
     }
 }

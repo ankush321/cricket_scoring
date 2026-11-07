@@ -3,9 +3,6 @@ package com.example.cricketscoring.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,12 +21,18 @@ import com.example.cricketscoring.rules.ruleCatalog
 fun SettingsScreen(store: CricketStore) {
     val navigator = LocalAppNavigator.current
     var confirm by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize()) {
         ScreenHeader("Settings", onBack = { navigator.back() })
-        Text("Scoring is stored on this device and works offline. A match keeps the rules it started with.")
-        Text("Recommended rules are a starting point. They are not an official board or tournament publication.", color = Muted)
-        SecondaryButton("Rules guide", { navigator.navigate(AppRoute.RulesGuide) })
-        SecondaryButton("Clear all local data", { confirm = true })
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Scoring is stored on this device and works offline. A match keeps the rules it started with.")
+            Text("Recommended rules are a starting point. They are not an official board or tournament publication.", color = Muted)
+            SecondaryButton("Rules guide", { navigator.navigate(AppRoute.RulesGuide) })
+            SecondaryButton("Clear all local data", { confirm = true })
+        }
     }
     if (confirm) {
         ConfirmDialog(
@@ -52,7 +55,11 @@ fun RulesGuideScreen(store: CricketStore) {
     val navigator = LocalAppNavigator.current
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Rules guide", onBack = { navigator.back() })
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Text("Compare the recommended setup for each style. Confirm the rows marked for the organizer before you start.", color = Muted)
             ruleCatalog().forEach { row ->
                 PitchCard {

@@ -24,8 +24,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -70,7 +68,7 @@ fun LiveScreen(store: CricketStore, matchId: String) {
     val navigator = LocalAppNavigator.current
     val match = store.data.matches.find { it.id == matchId }
     if (match == null) {
-        Column(Modifier.padding(16.dp)) {
+        CommonColumn(scrollable = false) {
             Text("This match is no longer on the device.")
             SecondaryButton("Back", { navigator.back() })
         }
@@ -94,18 +92,21 @@ fun LiveScreen(store: CricketStore, matchId: String) {
         )
         when {
             derived.status == MatchStatus.COMPLETED || derived.status == MatchStatus.ABANDONED -> ResultPanel(store, match)
-            innings == null -> Column(Modifier.padding(16.dp)) { Text("This match has not started.") }
+            innings == null -> CommonColumn(scrollable = false) { Text("This match has not started.") }
             derived.needsBatter -> BatterPrompt(store, match, innings)
             derived.needsBowler -> BowlerPrompt(store, match, innings)
             derived.breakPending || derived.superOverPending -> NextInningsPrompt(store, match, derived.superOverPending)
             else -> {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                CommonColumn(
+                    modifier = Modifier.weight(1f),
+                    scrollable = true,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     PanelTabs(listOf("Live" to (panel == 0), "Scorecard" to (panel == 1), "Overs" to (panel == 2), "More" to (panel == 3))) {
                         panel = it
                     }
                     AnimatedContent(targetState = panel, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "panel") { current ->
                         Column(
-                            modifier = Modifier.padding(vertical = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             when (current) {
@@ -179,7 +180,6 @@ fun LiveScreen(store: CricketStore, matchId: String) {
 private fun LiveTopBar(title: String, live: Boolean, onBack: () -> Unit, onUndo: () -> Unit) {
     AppToolbar(
         title = title,
-        subtitle = "Scoreboard",
         onBack = onBack,
         actions = {
             if (live) {
@@ -406,7 +406,7 @@ private fun ScoringPad(
 @Composable
 private fun BatterPrompt(store: CricketStore, match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
     val ids = innings.yetToBat + innings.battingRows.filter { it.retiredHurt }.map { it.playerId }
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Next batter", style = MaterialTheme.typography.headlineSmall)
         ids.distinct().forEach { id ->
             PrimaryButton(match.playerName(id), { store.nextBatter(match.id, id) }, Modifier.fillMaxWidth())
@@ -426,7 +426,7 @@ private fun BowlerPrompt(store: CricketStore, match: Match, innings: com.example
         val change = !match.rules.overs.mustChangeBowlerEachOver || player.id != last
         underCap && change
     }
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Next ${match.rules.labels.bowlingRole.lowercase()}", style = MaterialTheme.typography.headlineSmall)
         options.forEach { player ->
             PrimaryButton(player.name, { store.nextBowler(match.id, player.id) }, Modifier.fillMaxWidth())
@@ -447,7 +447,7 @@ private fun NextInningsPrompt(store: CricketStore, match: Match, superOver: Bool
     var striker by remember(battingId) { mutableStateOf(batting.players.first().id) }
     var nonStriker by remember(battingId) { mutableStateOf(batting.players.getOrNull(1)?.id) }
     var bowler by remember(battingId) { mutableStateOf(bowling.players.first().id) }
-    Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(if (superOver) "Super Over" else "Next innings", style = MaterialTheme.typography.headlineSmall)
         Text("${batting.name} bat. ${bowling.name} bowl.", color = Muted)
         derived.innings.lastOrNull { it.complete }?.target?.let { Text("Target $it", color = Gold) }
@@ -479,11 +479,8 @@ private fun ResultPanel(store: CricketStore, match: Match) {
     val derived = MatchEngine.derive(match)
     val accent = match.style.accent()
     var awarding by remember { mutableStateOf(false) }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+    CommonColumn(
+        scrollable = true,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         FinalMatchHero(match = match, derived = derived, accent = accent)

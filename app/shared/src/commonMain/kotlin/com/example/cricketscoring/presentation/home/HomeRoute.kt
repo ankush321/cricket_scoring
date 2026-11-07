@@ -6,13 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,8 +21,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.model.CricketStyle
+import com.example.cricketscoring.ui.CommonColumn
 import com.example.cricketscoring.ui.CricketStore
 import com.example.cricketscoring.ui.ElevationHigh
 import com.example.cricketscoring.ui.Muted
@@ -34,7 +33,6 @@ import com.example.cricketscoring.ui.PrimaryButton
 import com.example.cricketscoring.ui.StyleMark
 import com.example.cricketscoring.ui.SurfaceCard
 import com.example.cricketscoring.ui.accent
-import androidx.compose.ui.tooling.preview.Preview
 
 @Composable
 fun HomeRoute(
@@ -66,8 +64,8 @@ fun HomeScreen(
     uiState: HomeUiState,
     onAction: (HomeAction) -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+    CommonColumn(
+        scrollable = true,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         uiState.styles.forEach { card ->

@@ -7,9 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,19 +18,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.model.AdditionalScoringEvent
 import com.example.cricketscoring.model.CricketStyle
-import com.example.cricketscoring.model.RulesProfile
-import com.example.cricketscoring.model.ScoringAwardMode
 import com.example.cricketscoring.model.DismissalType
 import com.example.cricketscoring.model.RuleSource
+import com.example.cricketscoring.model.RulesProfile
+import com.example.cricketscoring.model.ScoringAwardMode
 import com.example.cricketscoring.model.Team
 import com.example.cricketscoring.model.TossChoice
+import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.boxDefaults
 import com.example.cricketscoring.rules.defaultRules
 import com.example.cricketscoring.rules.openDefaults
 import com.example.cricketscoring.rules.overarmLimited
 import com.example.cricketscoring.rules.overarmMultiInnings
 import com.example.cricketscoring.rules.styleTitle
-import com.example.cricketscoring.navigation.LocalAppNavigator
 
 private val wizardLabels = listOf("Teams", "Format", "Start")
 
@@ -42,7 +39,7 @@ fun WizardScreen(store: CricketStore) {
     val navigator = LocalAppNavigator.current
     val draft = store.draft
     if (draft == null) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        CommonColumn(scrollable = false, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("This setup was closed.")
             SecondaryButton("Back", { navigator.back() })
         }
@@ -67,8 +64,10 @@ fun WizardScreen(store: CricketStore) {
                 }
             },
         )
-        Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalPadding = 8.dp,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             StepProgress(

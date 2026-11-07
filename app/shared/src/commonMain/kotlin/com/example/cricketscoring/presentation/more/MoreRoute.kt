@@ -1,11 +1,6 @@
 package com.example.cricketscoring.presentation.more
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,16 +8,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
+import com.example.cricketscoring.ui.CommonColumn
 import com.example.cricketscoring.ui.ElevationMid
 import com.example.cricketscoring.ui.Muted
 import com.example.cricketscoring.ui.PitchTheme
 import com.example.cricketscoring.ui.SurfaceCard
-import androidx.compose.ui.tooling.preview.Preview
 
 @Composable
 fun MoreRoute() {
@@ -49,8 +44,8 @@ fun MoreScreen(
     uiState: MoreUiState,
     onAction: (MoreAction) -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+    CommonColumn(
+        scrollable = true,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         uiState.items.forEach { item ->

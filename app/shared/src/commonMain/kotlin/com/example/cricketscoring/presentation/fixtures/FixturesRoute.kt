@@ -3,8 +3,6 @@ package com.example.cricketscoring.presentation.fixtures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.model.CricketStyle
+import com.example.cricketscoring.ui.CommonColumn
 import com.example.cricketscoring.ui.CricketStore
 import com.example.cricketscoring.ui.ElevationMid
 import com.example.cricketscoring.ui.Muted
@@ -55,8 +54,8 @@ fun FixturesScreen(
     uiState: FixturesUiState,
     onAction: (FixturesAction) -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxSize().padding(16.dp),
+    CommonColumn(
+        scrollable = true,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         uiState.styles.forEach { card ->

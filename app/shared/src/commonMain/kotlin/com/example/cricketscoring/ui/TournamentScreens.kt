@@ -3,9 +3,6 @@ package com.example.cricketscoring.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -21,26 +18,32 @@ import com.example.cricketscoring.engine.pointsTable
 import com.example.cricketscoring.engine.twoDecimals
 import com.example.cricketscoring.model.CompetitionStage
 import com.example.cricketscoring.model.CricketStyle
-import com.example.cricketscoring.rules.styleTitle
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
+import com.example.cricketscoring.rules.styleTitle
 
 @Composable
 fun TournamentsScreen(store: CricketStore) {
     val navigator = LocalAppNavigator.current
     var creating by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize()) {
         ScreenHeader("Tournaments", onBack = { navigator.back() })
-        Text("A tournament keeps its own playing conditions and points.", color = Muted)
-        store.data.tournaments.forEach { tournament ->
-            PitchCard(onClick = { navigator.navigate(AppRoute.TournamentDetail(tournament.id)) }) {
-                Text(tournament.name, style = MaterialTheme.typography.titleMedium)
-                Text(styleTitle(tournament.style), color = tournament.style.accent())
-                Text("${tournament.teamIds.size} teams · ${tournament.fixtures.size} fixtures", color = Muted)
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("A tournament keeps its own playing conditions and points.", color = Muted)
+            store.data.tournaments.forEach { tournament ->
+                PitchCard(onClick = { navigator.navigate(AppRoute.TournamentDetail(tournament.id)) }) {
+                    Text(tournament.name, style = MaterialTheme.typography.titleMedium)
+                    Text(styleTitle(tournament.style), color = tournament.style.accent())
+                    Text("${tournament.teamIds.size} teams · ${tournament.fixtures.size} fixtures", color = Muted)
+                }
             }
+            if (store.data.tournaments.isEmpty()) Text("No tournaments yet.", color = Muted)
+            PrimaryButton("New tournament", { creating = true })
         }
-        if (store.data.tournaments.isEmpty()) Text("No tournaments yet.", color = Muted)
-        PrimaryButton("New tournament", { creating = true })
     }
     if (creating) NewTournamentDialog(store, onDismiss = { creating = false })
 }
@@ -77,7 +80,7 @@ fun TournamentDetailScreen(store: CricketStore, tournamentId: String) {
     val navigator = LocalAppNavigator.current
     val tournament = store.data.tournaments.find { it.id == tournamentId }
     if (tournament == null) {
-        Column(Modifier.padding(16.dp)) {
+        CommonColumn(scrollable = false, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("This tournament was removed.")
             SecondaryButton("Back", { navigator.back() })
         }
@@ -87,7 +90,11 @@ fun TournamentDetailScreen(store: CricketStore, tournamentId: String) {
     val table = pointsTable(tournament, store.data.matches)
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(tournament.name, onBack = { navigator.back() })
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Text(styleTitle(tournament.style), color = tournament.style.accent())
             Text(tournament.rules.name, color = Muted)
             tournament.rules.organizerPrompts.take(2).forEach { Notice(it) }

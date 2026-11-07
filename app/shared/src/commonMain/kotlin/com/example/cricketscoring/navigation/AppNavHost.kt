@@ -3,17 +3,12 @@ package com.example.cricketscoring.navigation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -26,14 +21,12 @@ import com.example.cricketscoring.di.AppContainer
 import com.example.cricketscoring.presentation.fixtures.FixturesRoute
 import com.example.cricketscoring.presentation.home.HomeRoute
 import com.example.cricketscoring.presentation.more.MoreRoute
+import com.example.cricketscoring.ui.AppBottomBar
 import com.example.cricketscoring.ui.AppToastDefaults
 import com.example.cricketscoring.ui.AppToastHost
 import com.example.cricketscoring.ui.AppToolbar
 import com.example.cricketscoring.ui.AppToolbarUiState
-import com.example.cricketscoring.ui.Lawn
 import com.example.cricketscoring.ui.LiveScreen
-import com.example.cricketscoring.ui.Muted
-import com.example.cricketscoring.ui.NavGlyph
 import com.example.cricketscoring.ui.PitchBlack
 import com.example.cricketscoring.ui.PlayersScreen
 import com.example.cricketscoring.ui.RulesGuideScreen
@@ -68,28 +61,13 @@ fun AppNavHost(container: AppContainer) {
                 containerColor = PitchBlack,
                 topBar = {
                     rootToolbar?.let { state ->
-                        AppToolbar(title = state.title, subtitle = state.subtitle)
+                        AppToolbar(title = state.title)
                     }
                 },
                 bottomBar = {
                     if (!hideNav) {
                         AppBottomBar(
-                            selected = AppTab.entries.firstOrNull { tab ->
-                                currentRoute?.hierarchy?.any { dest ->
-                                    when (tab) {
-                                        AppTab.Home -> dest.hasRoute<AppRoute.Home>()
-                                        AppTab.Fixtures -> dest.hasRoute<AppRoute.Fixtures>() || dest.hasRoute<AppRoute.StyleHub>()
-                                        AppTab.Teams -> dest.hasRoute<AppRoute.Teams>() || dest.hasRoute<AppRoute.TeamEdit>()
-                                        AppTab.Players -> dest.hasRoute<AppRoute.Players>()
-                                        AppTab.More -> dest.hasRoute<AppRoute.More>() ||
-                                            dest.hasRoute<AppRoute.Tournaments>() ||
-                                            dest.hasRoute<AppRoute.Stats>() ||
-                                            dest.hasRoute<AppRoute.Settings>() ||
-                                            dest.hasRoute<AppRoute.RulesGuide>() ||
-                                            dest.hasRoute<AppRoute.TournamentDetail>()
-                                    }
-                                } == true
-                            } ?: AppTab.Home,
+                            selected = selectedTab(currentRoute),
                             onSelect = { navigator.navigateRoot(it.route) },
                         )
                     }
@@ -169,51 +147,31 @@ fun AppNavHost(container: AppContainer) {
 private fun rootToolbarState(destination: NavDestination?): AppToolbarUiState? {
     destination ?: return null
     return when {
-        destination.hasRoute<AppRoute.Home>() -> AppToolbarUiState(
-            title = "Cricket Scoring",
-            subtitle = "Choose a style, then start or resume a match",
-        )
-        destination.hasRoute<AppRoute.Fixtures>() -> AppToolbarUiState(
-            title = "Fixtures",
-            subtitle = "Live, upcoming, and completed by style",
-        )
-        destination.hasRoute<AppRoute.Teams>() -> AppToolbarUiState(
-            title = "Teams",
-            subtitle = "Sides and squads across every style",
-        )
-        destination.hasRoute<AppRoute.Players>() -> AppToolbarUiState(
-            title = "Players",
-            subtitle = "Names used across every style",
-        )
-        destination.hasRoute<AppRoute.More>() -> AppToolbarUiState(
-            title = "More",
-            subtitle = "Tournaments, records, rules, and settings",
-        )
+        destination.hasRoute<AppRoute.Home>() -> AppToolbarUiState(title = "Cricket Scoring")
+        destination.hasRoute<AppRoute.Fixtures>() -> AppToolbarUiState(title = "Fixtures")
+        destination.hasRoute<AppRoute.Teams>() -> AppToolbarUiState(title = "Teams")
+        destination.hasRoute<AppRoute.Players>() -> AppToolbarUiState(title = "Players")
+        destination.hasRoute<AppRoute.More>() -> AppToolbarUiState(title = "More")
         else -> null
     }
 }
 
-@Composable
-private fun AppBottomBar(
-    selected: AppTab,
-    onSelect: (AppTab) -> Unit,
-) {
-    val colors = NavigationBarItemDefaults.colors(
-        selectedIconColor = Lawn,
-        selectedTextColor = Lawn,
-        indicatorColor = Color.Transparent,
-        unselectedIconColor = Muted,
-        unselectedTextColor = Muted,
-    )
-    NavigationBar(containerColor = PitchBlack) {
-        AppTab.entries.forEach { tab ->
-            NavigationBarItem(
-                selected = selected == tab,
-                onClick = { onSelect(tab) },
-                icon = { NavGlyph(tab.glyph, selected == tab) },
-                label = { Text(tab.label) },
-                colors = colors,
-            )
+private fun selectedTab(destination: NavDestination?): AppTab {
+    destination ?: return AppTab.Home
+    return AppTab.entries.firstOrNull { tab ->
+        destination.hierarchy.any { dest ->
+            when (tab) {
+                AppTab.Home -> dest.hasRoute<AppRoute.Home>()
+                AppTab.Fixtures -> dest.hasRoute<AppRoute.Fixtures>() || dest.hasRoute<AppRoute.StyleHub>()
+                AppTab.Teams -> dest.hasRoute<AppRoute.Teams>() || dest.hasRoute<AppRoute.TeamEdit>()
+                AppTab.Players -> dest.hasRoute<AppRoute.Players>()
+                AppTab.More -> dest.hasRoute<AppRoute.More>() ||
+                    dest.hasRoute<AppRoute.Tournaments>() ||
+                    dest.hasRoute<AppRoute.Stats>() ||
+                    dest.hasRoute<AppRoute.Settings>() ||
+                    dest.hasRoute<AppRoute.RulesGuide>() ||
+                    dest.hasRoute<AppRoute.TournamentDetail>()
+            }
         }
-    }
+    } ?: AppTab.Home
 }

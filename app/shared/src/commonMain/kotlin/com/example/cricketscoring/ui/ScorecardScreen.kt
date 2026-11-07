@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,7 +61,7 @@ fun ScorecardScreen(store: CricketStore, matchId: String) {
     val navigator = LocalAppNavigator.current
     val match = store.data.matches.find { it.id == matchId }
     if (match == null) {
-        Column(Modifier.padding(16.dp)) {
+        CommonColumn(scrollable = false) {
             Text("This scorecard is not on the device.")
             SecondaryButton("Back", { navigator.back() })
         }
@@ -83,11 +82,10 @@ fun ScorecardScreen(store: CricketStore, matchId: String) {
             action = "Share",
             onAction = { store.shareText = scorecardText(match) },
         )
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalPadding = AppScreenDefaults.Vertical,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (finished || derived.result != null) {

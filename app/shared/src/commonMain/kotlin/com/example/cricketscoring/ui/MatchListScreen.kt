@@ -1,15 +1,12 @@
 package com.example.cricketscoring.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
@@ -35,11 +32,11 @@ import com.example.cricketscoring.engine.teamShort
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.Match
 import com.example.cricketscoring.model.MatchStatus
+import com.example.cricketscoring.navigation.AppRoute
+import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.defaultRules
 import com.example.cricketscoring.rules.styleSummary
 import com.example.cricketscoring.rules.styleTitle
-import com.example.cricketscoring.navigation.AppRoute
-import com.example.cricketscoring.navigation.LocalAppNavigator
 
 private val tabs = listOf("Live", "Upcoming", "Completed", "Rules")
 
@@ -69,9 +66,14 @@ fun StyleHubScreen(store: CricketStore, style: CricketStyle) {
         val status = MatchEngine.derive(match).status
         status == MatchStatus.COMPLETED || status == MatchStatus.ABANDONED
     }.sortedByDescending { it.updatedAtEpochMs }.take(5)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize()) {
         ScreenHeader(styleTitle(style), onBack = { navigator.back() })
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        CommonColumn(
+            modifier = Modifier.weight(1f),
+            scrollable = true,
+            verticalPadding = AppScreenDefaults.Vertical,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
             PageHeading("Fixtures", "Resume a live game, review recent results, or start a new match.")
             SurfaceCard(elevation = ElevationHigh, accent = style.accent()) {
                 Text("Start a new match", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

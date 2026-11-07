@@ -48,7 +48,7 @@ object AppToastDefaults {
     const val DurationMs = 2_500L
     const val ExitAnimationMs = 300L
     val HostBottomClearance = 88.dp
-    val HorizontalPadding = 16.dp
+    val HorizontalPadding = AppScreenDefaults.Horizontal
     val BottomPadding = 16.dp
 }
 

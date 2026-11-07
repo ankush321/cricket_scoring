@@ -3,7 +3,6 @@ package com.example.cricketscoring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -21,7 +20,11 @@ import com.example.cricketscoring.ui.PitchTheme
 fun App() {
     val container = rememberAppContainer()
     PitchTheme {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
             AppNavHost(container)
             container.store.shareText?.let { text ->
                 AlertDialog(
