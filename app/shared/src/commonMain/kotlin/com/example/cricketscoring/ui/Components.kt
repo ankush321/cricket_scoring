@@ -608,27 +608,62 @@ fun BallChip(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val wicket = symbol.equals("W", ignoreCase = true) || symbol.contains("W", ignoreCase = true) && symbol.length <= 3
-    val boundary = symbol == "4" || symbol == "6"
+    val wicket = isWicketSymbol(symbol)
+    val noBallRuns = noBallRunsLabel(symbol)
+    val boundary = symbol == "4" || symbol == "6" || noBallRuns == "4" || noBallRuns == "6"
+    val special = (noBallRuns?.toIntOrNull() ?: 0) >= 7
     val background = when {
         wicket -> WicketRed
-        boundary -> Gold
+        boundary || special -> Gold
         else -> PitchRaised
     }
     val content = when {
-        wicket || boundary -> Color(0xFF14110A)
+        wicket -> Color.White
+        boundary || special -> Color(0xFF14110A)
         else -> Ink
     }
-    Box(
-        modifier = modifier
-            .size(36.dp)
-            .clip(CircleShape)
-            .background(background)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(symbol.take(3), color = if (wicket) Color.White else content, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    val clickable = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+    if (noBallRuns != null) {
+        Column(
+            modifier
+                .width(if (boundary || special) 46.dp else 40.dp)
+                .height(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(background)
+                .then(clickable),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(noBallRuns, color = content, fontWeight = FontWeight.Black, fontSize = if (noBallRuns.length > 2) 12.sp else 15.sp, maxLines = 1)
+            Text("NB", color = content.copy(alpha = 0.75f), fontWeight = FontWeight.Bold, fontSize = 9.sp, maxLines = 1)
+        }
+    } else {
+        Box(
+            modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(background)
+                .then(clickable),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (symbol.startsWith("nb")) "NB" else symbol.take(3),
+                color = content,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+            )
+        }
     }
+}
+
+private fun isWicketSymbol(symbol: String): Boolean =
+    symbol.equals("W", ignoreCase = true) || (symbol.endsWith("W") && symbol.length > 1 && !symbol.equals("wd", ignoreCase = true))
+
+private fun noBallRunsLabel(symbol: String): String? {
+    if (!symbol.startsWith("nb")) return null
+    val body = if (symbol.endsWith("W") && symbol.length > 3) symbol.dropLast(1) else symbol
+    if (!body.startsWith("nb+")) return null
+    return body.removePrefix("nb+").ifBlank { null }
 }
 
 @Composable
