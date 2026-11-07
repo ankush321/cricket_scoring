@@ -26,6 +26,7 @@ import com.example.cricketscoring.model.PlayingRole
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.styleTitle
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun TeamsScreen(store: CricketStore) {
@@ -295,4 +296,28 @@ fun StatsScreen(store: CricketStore) {
         }
         }
     }
+}
+
+@Preview
+@Composable
+private fun TeamsScreenPreview() {
+    PreviewShell { TeamsScreen(it) }
+}
+
+@Preview
+@Composable
+private fun TeamEditScreenPreview() {
+    PreviewShell { TeamEditScreen(it, PreviewIds.TeamA) }
+}
+
+@Preview
+@Composable
+private fun PlayersScreenPreview() {
+    PreviewShell { PlayersScreen(it) }
+}
+
+@Preview
+@Composable
+private fun StatsScreenPreview() {
+    PreviewShell { StatsScreen(it) }
 }

@@ -9,7 +9,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
@@ -18,6 +17,7 @@ import com.example.cricketscoring.ui.ElevationMid
 import com.example.cricketscoring.ui.Muted
 import com.example.cricketscoring.ui.PitchTheme
 import com.example.cricketscoring.ui.SurfaceCard
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun MoreRoute() {

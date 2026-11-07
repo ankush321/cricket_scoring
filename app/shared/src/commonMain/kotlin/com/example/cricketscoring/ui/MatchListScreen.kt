@@ -37,6 +37,7 @@ import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.defaultRules
 import com.example.cricketscoring.rules.styleSummary
 import com.example.cricketscoring.rules.styleTitle
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private val tabs = listOf("Live", "Upcoming", "Completed", "Rules")
 
@@ -243,4 +244,10 @@ private fun MatchStatus.displayName(): String = when (this) {
     MatchStatus.COMPLETED -> "Completed"
     MatchStatus.ABANDONED -> "Abandoned"
     MatchStatus.CANCELLED -> "Cancelled"
+}
+
+@Preview
+@Composable
+private fun StyleHubScreenPreview() {
+    PreviewShell { StyleHubScreen(it, CricketStyle.UNDERARM_BOX) }
 }

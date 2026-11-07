@@ -8,25 +8,40 @@ import com.example.cricketscoring.model.Match
 import com.example.cricketscoring.model.MatchStatus
 import com.example.cricketscoring.ui.CricketStore
 
-val LocalAppNavigator = staticCompositionLocalOf<AppNavigator> {
+/**
+ * Navigation API used by screens. Real [AppNavigator] wires NavHost;
+ * [PreviewAppNavigator] is a no-op so Compose Preview does not need a NavController.
+ */
+interface AppNavigation {
+    fun back()
+    fun navigate(route: AppRoute)
+    fun navigateRoot(route: AppRoute)
+    fun openStyle(style: CricketStyle)
+    fun openWizard(style: CricketStyle, match: Match? = null)
+    fun duplicate(match: Match)
+    fun openMatch(match: Match)
+    fun afterCommit(match: Match, started: Boolean)
+}
+
+val LocalAppNavigator = staticCompositionLocalOf<AppNavigation> {
     error("AppNavigator not provided")
 }
 
 class AppNavigator(
     private val navController: NavHostController,
     private val store: CricketStore,
-) {
-    fun back() {
+) : AppNavigation {
+    override fun back() {
         if (!navController.popBackStack()) {
             navigateRoot(AppRoute.Home)
         }
     }
 
-    fun navigate(route: AppRoute) {
+    override fun navigate(route: AppRoute) {
         navController.navigate(route)
     }
 
-    fun navigateRoot(route: AppRoute) {
+    override fun navigateRoot(route: AppRoute) {
         navController.navigate(route) {
             popUpTo(navController.graph.startDestinationId) {
                 saveState = true
@@ -36,21 +51,21 @@ class AppNavigator(
         }
     }
 
-    fun openStyle(style: CricketStyle) {
+    override fun openStyle(style: CricketStyle) {
         navigate(AppRoute.StyleHub.of(style))
     }
 
-    fun openWizard(style: CricketStyle, match: Match? = null) {
+    override fun openWizard(style: CricketStyle, match: Match?) {
         store.openWizard(style, match)
         navigate(AppRoute.Wizard.of(style))
     }
 
-    fun duplicate(match: Match) {
+    override fun duplicate(match: Match) {
         store.duplicate(match)
         navigate(AppRoute.Wizard.of(match.style))
     }
 
-    fun openMatch(match: Match) {
+    override fun openMatch(match: Match) {
         val derived = MatchEngine.derive(match)
         when (derived.status) {
             MatchStatus.UPCOMING, MatchStatus.CANCELLED -> openWizard(match.style, match)
@@ -59,7 +74,7 @@ class AppNavigator(
         }
     }
 
-    fun afterCommit(match: Match, started: Boolean) {
+    override fun afterCommit(match: Match, started: Boolean) {
         navController.navigate(AppRoute.StyleHub.of(match.style)) {
             popUpTo(AppRoute.Home) { inclusive = false }
             launchSingleTop = true
@@ -68,4 +83,16 @@ class AppNavigator(
             navigate(AppRoute.Live(match.id))
         }
     }
+}
+
+/** No-op navigator for Android Studio / IDE Compose Preview (matches WSLF preview pattern). */
+class PreviewAppNavigator : AppNavigation {
+    override fun back() = Unit
+    override fun navigate(route: AppRoute) = Unit
+    override fun navigateRoot(route: AppRoute) = Unit
+    override fun openStyle(style: CricketStyle) = Unit
+    override fun openWizard(style: CricketStyle, match: Match?) = Unit // match optional via interface default
+    override fun duplicate(match: Match) = Unit
+    override fun openMatch(match: Match) = Unit
+    override fun afterCommit(match: Match, started: Boolean) = Unit
 }

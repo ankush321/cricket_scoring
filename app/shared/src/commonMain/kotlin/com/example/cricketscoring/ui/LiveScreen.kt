@@ -62,6 +62,7 @@ import com.example.cricketscoring.model.MatchStatus
 import com.example.cricketscoring.model.SurfaceContact
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun LiveScreen(store: CricketStore, matchId: String) {
@@ -1096,4 +1097,10 @@ private fun surfaceKeys(rules: com.example.cricketscoring.model.RulesProfile) = 
     if (rules.boundaries.roofIsDeadBall && rules.style == com.example.cricketscoring.model.CricketStyle.UNDERARM_BOX) {
         add("Roof" to SurfaceContact.ROOF)
     }
+}
+
+@Preview
+@Composable
+private fun LiveScreenPreview() {
+    PreviewShell { LiveScreen(it, PreviewIds.MatchLive) }
 }

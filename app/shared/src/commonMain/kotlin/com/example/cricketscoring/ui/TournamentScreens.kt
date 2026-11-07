@@ -21,6 +21,7 @@ import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.styleTitle
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun TournamentsScreen(store: CricketStore) {
@@ -189,4 +190,16 @@ private fun AddFixtureDialog(store: CricketStore, tournament: com.example.cricke
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+@Preview
+@Composable
+private fun TournamentsScreenPreview() {
+    PreviewShell { TournamentsScreen(it) }
+}
+
+@Preview
+@Composable
+private fun TournamentDetailScreenPreview() {
+    PreviewShell { TournamentDetailScreen(it, PreviewIds.Tournament) }
 }

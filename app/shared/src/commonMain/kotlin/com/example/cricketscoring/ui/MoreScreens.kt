@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.ruleCatalog
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun SettingsScreen(store: CricketStore) {
@@ -73,4 +74,16 @@ fun RulesGuideScreen(store: CricketStore) {
             }
         }
     }
+}
+
+@Preview
+@Composable
+private fun SettingsScreenPreview() {
+    PreviewShell { SettingsScreen(it) }
+}
+
+@Preview
+@Composable
+private fun RulesGuideScreenPreview() {
+    PreviewShell { RulesGuideScreen(it) }
 }

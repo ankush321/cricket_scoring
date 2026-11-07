@@ -55,6 +55,7 @@ import com.example.cricketscoring.model.Partnership
 import com.example.cricketscoring.navigation.AppRoute
 import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.styleTitle
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun ScorecardScreen(store: CricketStore, matchId: String) {
@@ -920,4 +921,10 @@ private fun statusFallback(status: MatchStatus): String = when (status) {
 private fun inningsRunRate(innings: DerivedInnings): Double? {
     if (innings.legalBalls <= 0) return null
     return innings.runs * innings.ballsPerOver.toDouble() / innings.legalBalls
+}
+
+@Preview
+@Composable
+private fun ScorecardScreenPreview() {
+    PreviewShell { ScorecardScreen(it, PreviewIds.MatchLive) }
 }

@@ -12,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.ui.CommonColumn
@@ -23,6 +22,7 @@ import com.example.cricketscoring.ui.PitchTheme
 import com.example.cricketscoring.ui.StyleMark
 import com.example.cricketscoring.ui.SurfaceCard
 import com.example.cricketscoring.ui.accent
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun FixturesRoute(

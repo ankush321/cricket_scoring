@@ -22,7 +22,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":app:shared"))
 
-            implementation(libs.compose.ui)
+            implementation(compose.ui)
         }
     }
 }

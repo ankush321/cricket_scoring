@@ -31,6 +31,7 @@ import com.example.cricketscoring.rules.openDefaults
 import com.example.cricketscoring.rules.overarmLimited
 import com.example.cricketscoring.rules.overarmMultiInnings
 import com.example.cricketscoring.rules.styleTitle
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private val wizardLabels = listOf("Teams", "Format", "Start")
 
@@ -748,3 +749,19 @@ private fun com.example.cricketscoring.model.RulesProfile.withDismissal(type: Di
         enabled = if (enabled) (dismissals.enabled + type).distinct() else dismissals.enabled.filterNot { it == type },
     ),
 )
+
+@Preview
+@Composable
+private fun WizardScreenPreview() {
+    PreviewShell(
+        configure = { store ->
+            store.openWizard(CricketStyle.UNDERARM_BOX)
+            store.draft = store.draft?.copy(
+                teamAId = PreviewIds.TeamA,
+                teamBId = PreviewIds.TeamB,
+                squadA = listOf(PreviewIds.PlayerA1, PreviewIds.PlayerA2, PreviewIds.PlayerA3),
+                squadB = listOf(PreviewIds.PlayerB1, PreviewIds.PlayerB2, PreviewIds.PlayerB3),
+            )
+        },
+    ) { WizardScreen(it) }
+}
