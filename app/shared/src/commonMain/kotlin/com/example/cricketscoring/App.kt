@@ -21,7 +21,7 @@ import com.example.cricketscoring.ui.PitchTheme
 fun App() {
     val container = rememberAppContainer()
     PitchTheme {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeContentPadding()) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             AppNavHost(container)
             container.store.shareText?.let { text ->
                 AlertDialog(

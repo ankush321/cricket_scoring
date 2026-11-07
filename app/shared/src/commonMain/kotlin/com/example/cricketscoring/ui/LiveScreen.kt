@@ -104,7 +104,10 @@ fun LiveScreen(store: CricketStore, matchId: String) {
                         panel = it
                     }
                     AnimatedContent(targetState = panel, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "panel") { current ->
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             when (current) {
                                 0 -> LiveBoard(match, derived, innings) { editing = it }
                                 1 -> InningsTables(match, innings)
@@ -474,19 +477,33 @@ private fun PickButton(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun ResultPanel(store: CricketStore, match: Match) {
     val navigator = LocalAppNavigator.current
     val derived = MatchEngine.derive(match)
+    val accent = match.style.accent()
     var awarding by remember { mutableStateOf(false) }
-    Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(derived.result?.summary ?: "Match over", style = MaterialTheme.typography.headlineSmall, color = Lawn)
-        derived.playerOfTheMatchId?.let { Text("Player of the match: ${match.playerName(it)}") }
-        PrimaryButton("Scorecard", { navigator.navigate(AppRoute.Scorecard(match.id)) }, Modifier.fillMaxWidth())
-        SecondaryButton("Choose player of the match", { awarding = true }, Modifier.fillMaxWidth())
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        FinalMatchHero(match = match, derived = derived, accent = accent)
+        FinalTopPerformers(match = match, derived = derived, accent = accent)
+        derived.playerOfTheMatchId?.let { potmId ->
+            PlayerOfTheMatchCard(name = match.playerName(potmId), accent = accent)
+        }
+        PrimaryButton("Open full scorecard", { navigator.navigate(AppRoute.Scorecard(match.id)) }, Modifier.fillMaxWidth())
+        SecondaryButton(
+            if (derived.playerOfTheMatchId == null) "Choose player of the match" else "Change player of the match",
+            { awarding = true },
+            Modifier.fillMaxWidth(),
+        )
     }
     if (awarding) {
         AlertDialog(
             onDismissRequest = { awarding = false },
             title = { Text("Player of the match") },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     (match.teamA.players + match.teamB.players).forEach { player ->
                         TextButton(onClick = {
                             store.award(match.id, player.id)
