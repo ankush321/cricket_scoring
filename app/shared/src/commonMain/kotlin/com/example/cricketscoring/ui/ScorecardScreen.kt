@@ -23,14 +23,17 @@ import com.example.cricketscoring.engine.scoreLine
 import com.example.cricketscoring.engine.scorecardText
 import com.example.cricketscoring.engine.teamName
 import com.example.cricketscoring.engine.twoDecimals
+import com.example.cricketscoring.navigation.AppRoute
+import com.example.cricketscoring.navigation.LocalAppNavigator
 
 @Composable
 fun ScorecardScreen(store: CricketStore, matchId: String) {
+    val navigator = LocalAppNavigator.current
     val match = store.data.matches.find { it.id == matchId }
     if (match == null) {
         Column(Modifier.padding(16.dp)) {
             Text("This scorecard is not on the device.")
-            SecondaryButton("Back", { store.pop() })
+            SecondaryButton("Back", { navigator.back() })
         }
         return
     }
@@ -38,7 +41,7 @@ fun ScorecardScreen(store: CricketStore, matchId: String) {
     var index by remember(match.id) { mutableIntStateOf(derived.innings.lastIndex.coerceAtLeast(0)) }
     val innings = derived.innings.getOrNull(index)
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(match.title, onBack = { store.pop() }, action = "Share", onAction = { store.shareText = scorecardText(match) })
+        ScreenHeader(match.title, onBack = { navigator.back() }, action = "Share", onAction = { store.shareText = scorecardText(match) })
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(match.rules.name, color = Muted)
             derived.result?.let { Text(it.summary, style = MaterialTheme.typography.titleLarge, color = Lawn) }
@@ -80,7 +83,7 @@ fun ScorecardScreen(store: CricketStore, matchId: String) {
                 }
             }
             derived.playerOfTheMatchId?.let { Text("Player of the match: ${match.playerName(it)}") }
-            SecondaryButton("Resume scoring", { store.push(Screen.Live(match.id)) })
+            SecondaryButton("Resume scoring", { navigator.navigate(AppRoute.Live(match.id)) })
         }
     }
 }

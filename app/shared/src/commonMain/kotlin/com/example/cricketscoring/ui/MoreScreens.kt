@@ -16,42 +16,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.cricketscoring.navigation.AppRoute
+import com.example.cricketscoring.navigation.LocalAppNavigator
 import com.example.cricketscoring.rules.ruleCatalog
 
 @Composable
-fun MoreScreen(store: CricketStore) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        PageHeading("More", "Tournaments, records, rules, and device settings.")
-        SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.Tournaments) }) {
-            Text("Tournaments", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Group matches and share a rules copy.", color = Muted)
-        }
-        SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.Stats) }) {
-            Text("Statistics", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Runs, wickets, and results already scored.", color = Muted)
-        }
-        SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.RulesGuide) }) {
-            Text("Rules guide", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Recommended starting points for each style.", color = Muted)
-        }
-        SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.Settings) }) {
-            Text("Settings", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("This device only. Matches save as you score.", color = Muted)
-        }
-    }
-}
-
-@Composable
 fun SettingsScreen(store: CricketStore) {
+    val navigator = LocalAppNavigator.current
     var confirm by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ScreenHeader("Settings", onBack = { store.pop() })
+        ScreenHeader("Settings", onBack = { navigator.back() })
         Text("Scoring is stored on this device and works offline. A match keeps the rules it started with.")
         Text("Recommended rules are a starting point. They are not an official board or tournament publication.", color = Muted)
-        SecondaryButton("Rules guide", { store.push(Screen.RulesGuide) })
+        SecondaryButton("Rules guide", { navigator.navigate(AppRoute.RulesGuide) })
         SecondaryButton("Clear all local data", { confirm = true })
     }
     if (confirm) {
@@ -62,6 +39,7 @@ fun SettingsScreen(store: CricketStore) {
             onConfirm = {
                 store.clearAll()
                 confirm = false
+                navigator.navigateRoot(AppRoute.Home)
             },
             onDismiss = { confirm = false },
             destructive = true,
@@ -71,8 +49,9 @@ fun SettingsScreen(store: CricketStore) {
 
 @Composable
 fun RulesGuideScreen(store: CricketStore) {
+    val navigator = LocalAppNavigator.current
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Rules guide", onBack = { store.pop() })
+        ScreenHeader("Rules guide", onBack = { navigator.back() })
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Compare the recommended setup for each style. Confirm the rows marked for the organizer before you start.", color = Muted)
             ruleCatalog().forEach { row ->

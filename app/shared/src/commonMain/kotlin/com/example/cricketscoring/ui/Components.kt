@@ -66,7 +66,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
 fun PageHeading(title: String, subtitle: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(subtitle, color = Muted, style = MaterialTheme.typography.bodyLarge)
+//        Text(subtitle, color = Muted, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -748,18 +748,17 @@ fun InlineActions(vararg actions: Pair<String, () -> Unit>) {
 
 @Composable
 fun ScreenHeader(title: String, onBack: (() -> Unit)? = null, action: String? = null, onAction: (() -> Unit)? = null) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (onBack != null) {
-            TextButton(onClick = onBack) { Text("Back") }
-        }
-        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
-        if (action != null && onAction != null) {
-            TextButton(onClick = onAction) { Text(action) }
-        }
-    }
+    AppToolbar(
+        title = title,
+        onBack = onBack,
+        actions = {
+            if (action != null && onAction != null) {
+                TextButton(onClick = onAction) {
+                    Text(action, color = Lawn, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        },
+    )
 }
 
 @Composable

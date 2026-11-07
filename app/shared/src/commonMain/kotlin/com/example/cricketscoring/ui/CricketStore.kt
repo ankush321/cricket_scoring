@@ -37,24 +37,6 @@ fun freshId(prefix: String): String {
 
 fun nowMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
-sealed interface Screen {
-    data object Home : Screen
-    data object Matches : Screen
-    data class StyleHub(val style: CricketStyle) : Screen
-    data object Wizard : Screen
-    data class Live(val matchId: String) : Screen
-    data class Scorecard(val matchId: String) : Screen
-    data object Teams : Screen
-    data class TeamEdit(val teamId: String?) : Screen
-    data object Players : Screen
-    data object Tournaments : Screen
-    data class TournamentDetail(val tournamentId: String) : Screen
-    data object Stats : Screen
-    data object More : Screen
-    data object Settings : Screen
-    data object RulesGuide : Screen
-}
-
 data class MatchDraft(
     val style: CricketStyle,
     val step: Int = 1,
@@ -92,16 +74,12 @@ data class WizardIssue(
 class CricketStore(private val repository: AppRepository) {
     var data by mutableStateOf(repository.load())
         private set
-    var stack by mutableStateOf(listOf<Screen>(Screen.Home))
-        private set
     var message by mutableStateOf<String?>(null)
         private set
     var messageType by mutableStateOf(AppToastType.Info)
         private set
     var draft by mutableStateOf<MatchDraft?>(null)
     var shareText by mutableStateOf<String?>(null)
-
-    val screen: Screen get() = stack.last()
 
     fun showToast(message: String, type: AppToastType = AppToastType.Info) {
         messageType = type
@@ -112,43 +90,16 @@ class CricketStore(private val repository: AppRepository) {
         message = null
     }
 
-    fun push(screen: Screen) {
-        stack = stack + screen
-    }
-
-    fun pop() {
-        if (stack.size > 1) stack = stack.dropLast(1)
-    }
-
-    fun go(screen: Screen) {
-        stack = listOf(screen)
-    }
-
-    fun openStyle(style: CricketStyle, fromHome: Boolean) {
-        stack = listOf(if (fromHome) Screen.Home else Screen.Matches, Screen.StyleHub(style))
-    }
-
     fun openWizard(style: CricketStyle, match: Match? = null) {
         draft = if (match == null) {
             MatchDraft(style = style, rules = defaultRules(style).copy(id = freshId("rules")))
         } else {
             draftFrom(match)
         }
-        push(Screen.Wizard)
     }
 
     fun duplicate(match: Match) {
         draft = draftFrom(match).copy(existingMatchId = null, step = 1, strikerId = null, nonStrikerId = null, bowlerId = null)
-        push(Screen.Wizard)
-    }
-
-    fun openMatch(match: Match) {
-        val derived = MatchEngine.derive(match)
-        when (derived.status) {
-            MatchStatus.UPCOMING, MatchStatus.CANCELLED -> openWizard(match.style, match)
-            MatchStatus.COMPLETED, MatchStatus.ABANDONED -> push(Screen.Scorecard(match.id))
-            else -> push(Screen.Live(match.id))
-        }
     }
 
     fun createTeam(name: String, playerLines: String, color: Int): Team? {
@@ -231,13 +182,13 @@ class CricketStore(private val repository: AppRepository) {
         update { it.copy(players = it.players.filterNot { player -> player.id == playerId }) }
     }
 
-    fun commitDraft(start: Boolean) {
-        val currentDraft = draft ?: return
+    fun commitDraft(start: Boolean): Match? {
+        val currentDraft = draft ?: return null
         val issue = wizardIssue(this, currentDraft, requireStartFields = start)
         if (issue != null) {
             draft = currentDraft.copy(step = issue.step, guidance = issue.message, focus = issue.focus)
             showToast(issue.message, AppToastType.Warning)
-            return
+            return null
         }
         try {
             val teamA = data.teams.find { it.id == currentDraft.teamAId } ?: error("Choose the first team.")
@@ -298,16 +249,13 @@ class CricketStore(private val repository: AppRepository) {
             }
             draft = null
             showToast(if (start) "Match started." else "Match saved.", AppToastType.Success)
-            stack = listOf(
-                Screen.Home,
-                Screen.StyleHub(created.style),
-                if (start) Screen.Live(created.id) else Screen.StyleHub(created.style),
-            ).distinct()
+            return created
         } catch (error: ScoringException) {
             showToast(error.message ?: "Could not start the match.", AppToastType.Error)
         } catch (error: IllegalStateException) {
             showToast(error.message ?: "Could not start the match.", AppToastType.Error)
         }
+        return null
     }
 
     fun deleteMatch(matchId: String) {
@@ -319,7 +267,6 @@ class CricketStore(private val repository: AppRepository) {
                 },
             )
         }
-        if (stack.lastOrNull() is Screen.Live || stack.lastOrNull() is Screen.Scorecard) pop()
         showToast("Match deleted.", AppToastType.Success)
     }
 
@@ -400,10 +347,10 @@ class CricketStore(private val repository: AppRepository) {
         showToast("Rules saved for later matches.", AppToastType.Success)
     }
 
-    fun createTournament(name: String, style: CricketStyle) {
+    fun createTournament(name: String, style: CricketStyle): String? {
         if (name.isBlank()) {
             showToast("Give the tournament a name.", AppToastType.Warning)
-            return
+            return null
         }
         val tournament = Tournament(
             id = freshId("tournament"),
@@ -412,7 +359,7 @@ class CricketStore(private val repository: AppRepository) {
             rules = defaultRules(style).copy(id = freshId("rules"), source = com.example.cricketscoring.model.RuleSource.TOURNAMENT),
         )
         update { it.copy(tournaments = it.tournaments + tournament) }
-        push(Screen.TournamentDetail(tournament.id))
+        return tournament.id
     }
 
     fun saveTournament(tournament: Tournament) {
@@ -423,7 +370,6 @@ class CricketStore(private val repository: AppRepository) {
         data = AppData()
         repository.save(data)
         draft = null
-        stack = listOf(Screen.Home)
         showToast("Local scores cleared.", AppToastType.Success)
     }
 

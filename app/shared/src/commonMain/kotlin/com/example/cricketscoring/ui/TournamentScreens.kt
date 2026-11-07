@@ -22,15 +22,18 @@ import com.example.cricketscoring.engine.twoDecimals
 import com.example.cricketscoring.model.CompetitionStage
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.rules.styleTitle
+import com.example.cricketscoring.navigation.AppRoute
+import com.example.cricketscoring.navigation.LocalAppNavigator
 
 @Composable
 fun TournamentsScreen(store: CricketStore) {
+    val navigator = LocalAppNavigator.current
     var creating by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ScreenHeader("Tournaments", onBack = { store.pop() })
+        ScreenHeader("Tournaments", onBack = { navigator.back() })
         Text("A tournament keeps its own playing conditions and points.", color = Muted)
         store.data.tournaments.forEach { tournament ->
-            PitchCard(onClick = { store.push(Screen.TournamentDetail(tournament.id)) }) {
+            PitchCard(onClick = { navigator.navigate(AppRoute.TournamentDetail(tournament.id)) }) {
                 Text(tournament.name, style = MaterialTheme.typography.titleMedium)
                 Text(styleTitle(tournament.style), color = tournament.style.accent())
                 Text("${tournament.teamIds.size} teams · ${tournament.fixtures.size} fixtures", color = Muted)
@@ -44,6 +47,7 @@ fun TournamentsScreen(store: CricketStore) {
 
 @Composable
 private fun NewTournamentDialog(store: CricketStore, onDismiss: () -> Unit) {
+    val navigator = LocalAppNavigator.current
     var name by remember { mutableStateOf("") }
     var style by remember { mutableStateOf(CricketStyle.UNDERARM_BOX) }
     AlertDialog(
@@ -59,8 +63,9 @@ private fun NewTournamentDialog(store: CricketStore, onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = {
-                store.createTournament(name, style)
+                val id = store.createTournament(name, style)
                 onDismiss()
+                if (id != null) navigator.navigate(AppRoute.TournamentDetail(id))
             }) { Text("Create") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -69,18 +74,19 @@ private fun NewTournamentDialog(store: CricketStore, onDismiss: () -> Unit) {
 
 @Composable
 fun TournamentDetailScreen(store: CricketStore, tournamentId: String) {
+    val navigator = LocalAppNavigator.current
     val tournament = store.data.tournaments.find { it.id == tournamentId }
     if (tournament == null) {
         Column(Modifier.padding(16.dp)) {
             Text("This tournament was removed.")
-            SecondaryButton("Back", { store.pop() })
+            SecondaryButton("Back", { navigator.back() })
         }
         return
     }
     var adding by remember { mutableStateOf(false) }
     val table = pointsTable(tournament, store.data.matches)
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(tournament.name, onBack = { store.pop() })
+        ScreenHeader(tournament.name, onBack = { navigator.back() })
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(styleTitle(tournament.style), color = tournament.style.accent())
             Text(tournament.rules.name, color = Muted)
@@ -130,10 +136,10 @@ fun TournamentDetailScreen(store: CricketStore, tournamentId: String) {
                                     fixtureId = fixture.id,
                                     title = "$a vs $b",
                                 )
-                                store.push(Screen.Wizard)
+                                navigator.navigate(AppRoute.Wizard.of(tournament.style))
                             })
                         } else {
-                            SecondaryButton("Open match", { store.openMatch(match) })
+                            SecondaryButton("Open match", { navigator.openMatch(match) })
                         }
                     }
                 }

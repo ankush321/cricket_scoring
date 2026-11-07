@@ -33,16 +33,18 @@ import com.example.cricketscoring.rules.openDefaults
 import com.example.cricketscoring.rules.overarmLimited
 import com.example.cricketscoring.rules.overarmMultiInnings
 import com.example.cricketscoring.rules.styleTitle
+import com.example.cricketscoring.navigation.LocalAppNavigator
 
 private val wizardLabels = listOf("Teams", "Format", "Start")
 
 @Composable
 fun WizardScreen(store: CricketStore) {
+    val navigator = LocalAppNavigator.current
     val draft = store.draft
     if (draft == null) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("This setup was closed.")
-            SecondaryButton("Back", { store.pop() })
+            SecondaryButton("Back", { navigator.back() })
         }
         return
     }
@@ -61,7 +63,7 @@ fun WizardScreen(store: CricketStore) {
             onBack = {
                 if (draft.step > 1) edit { it.copy(step = it.step - 1, guidance = null, focus = null) } else {
                     store.draft = null
-                    store.pop()
+                    navigator.back()
                 }
             },
         )
@@ -97,8 +99,12 @@ fun WizardScreen(store: CricketStore) {
                     Modifier.fillMaxWidth(),
                 )
             } else {
-                PrimaryButton("Start match", { store.commitDraft(start = true) }, Modifier.fillMaxWidth())
-                SecondaryButton("Save for later", { store.commitDraft(start = false) }, Modifier.fillMaxWidth())
+                PrimaryButton("Start match", {
+                    store.commitDraft(start = true)?.let { navigator.afterCommit(it, started = true) }
+                }, Modifier.fillMaxWidth())
+                SecondaryButton("Save for later", {
+                    store.commitDraft(start = false)?.let { navigator.afterCommit(it, started = false) }
+                }, Modifier.fillMaxWidth())
             }
         }
     }

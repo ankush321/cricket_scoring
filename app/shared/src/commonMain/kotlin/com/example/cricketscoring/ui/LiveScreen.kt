@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,14 +62,17 @@ import com.example.cricketscoring.model.MatchEvent
 import com.example.cricketscoring.model.MatchPlayer
 import com.example.cricketscoring.model.MatchStatus
 import com.example.cricketscoring.model.SurfaceContact
+import com.example.cricketscoring.navigation.AppRoute
+import com.example.cricketscoring.navigation.LocalAppNavigator
 
 @Composable
 fun LiveScreen(store: CricketStore, matchId: String) {
+    val navigator = LocalAppNavigator.current
     val match = store.data.matches.find { it.id == matchId }
     if (match == null) {
         Column(Modifier.padding(16.dp)) {
             Text("This match is no longer on the device.")
-            SecondaryButton("Back", { store.pop() })
+            SecondaryButton("Back", { navigator.back() })
         }
         return
     }
@@ -84,7 +89,7 @@ fun LiveScreen(store: CricketStore, matchId: String) {
         LiveTopBar(
             title = match.title,
             live = derived.status == MatchStatus.LIVE || derived.status == MatchStatus.SUPER_OVER,
-            onBack = { store.pop() },
+            onBack = { navigator.back() },
             onUndo = { store.undo(match.id) },
         )
         when {
@@ -169,20 +174,19 @@ fun LiveScreen(store: CricketStore, matchId: String) {
 
 @Composable
 private fun LiveTopBar(title: String, live: Boolean, onBack: () -> Unit, onUndo: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextButton(onClick = onBack) { Text("Back") }
-        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-            Text("Scoreboard", color = Muted, style = MaterialTheme.typography.bodySmall)
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-        }
-        if (live) {
-            LiveBadge(Modifier.padding(end = 4.dp))
-        }
-        TextButton(onClick = onUndo) { Text("Undo") }
-    }
+    AppToolbar(
+        title = title,
+        subtitle = "Scoreboard",
+        onBack = onBack,
+        actions = {
+            if (live) {
+                LiveBadge(Modifier.padding(end = 4.dp))
+            }
+            TextButton(onClick = onUndo) {
+                Text("Undo", color = Lawn, fontWeight = FontWeight.SemiBold)
+            }
+        },
+    )
 }
 
 @Composable
@@ -468,12 +472,13 @@ private fun PickButton(label: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun ResultPanel(store: CricketStore, match: Match) {
+    val navigator = LocalAppNavigator.current
     val derived = MatchEngine.derive(match)
     var awarding by remember { mutableStateOf(false) }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(derived.result?.summary ?: "Match over", style = MaterialTheme.typography.headlineSmall, color = Lawn)
         derived.playerOfTheMatchId?.let { Text("Player of the match: ${match.playerName(it)}") }
-        PrimaryButton("Scorecard", { store.push(Screen.Scorecard(match.id)) }, Modifier.fillMaxWidth())
+        PrimaryButton("Scorecard", { navigator.navigate(AppRoute.Scorecard(match.id)) }, Modifier.fillMaxWidth())
         SecondaryButton("Choose player of the match", { awarding = true }, Modifier.fillMaxWidth())
     }
     if (awarding) {
@@ -686,6 +691,7 @@ private fun DeliveryDialog(match: Match, delivery: AppliedDelivery, onDismiss: (
 
 @Composable
 private fun InningsTables(match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
+    var yetToBatExpanded by remember { mutableStateOf(false) }
     PitchCard {
         Text("${match.teamName(innings.battingTeamId)}  ${innings.scoreLine()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text("Batting", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
@@ -704,18 +710,24 @@ private fun InningsTables(match: Match, innings: com.example.cricketscoring.mode
             }
         }
         if (innings.yetToBat.isNotEmpty()) {
-            Text("Yet to bat", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
-            Text(innings.yetToBat.joinToString { match.playerName(it) }, color = Ink)
+            Spacer(Modifier.height(12.dp))
+            YetToBatSection(
+                match = match,
+                playerIds = innings.yetToBat,
+                expanded = yetToBatExpanded,
+                onToggle = { yetToBatExpanded = !yetToBatExpanded },
+            )
         }
-        val extras = innings.extras
-        Spacer(Modifier.height(10.dp))
-        Text("Extras ${extras.total}  ·  wd ${extras.wides}  nb ${extras.noBalls}  b ${extras.byes}  lb ${extras.legByes}  p ${extras.penalties}", color = Muted)
+        Spacer(Modifier.height(12.dp))
+        ExtrasCard(innings.extras)
         if (innings.fallOfWickets.isNotEmpty()) {
-            Text("Fall of wickets", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-            Text(innings.fallOfWickets.joinToString("   ") { "${it.wicketNumber}-${it.teamScore} ${it.batterName}" })
+            Spacer(Modifier.height(10.dp))
+            Text("Fall of wickets", fontWeight = FontWeight.SemiBold)
+            Text(innings.fallOfWickets.joinToString("   ") { "${it.wicketNumber}-${it.teamScore} ${it.batterName}" }, color = Muted)
         }
         innings.partnerships.lastOrNull { it.endedAtEpochMs == null || it == innings.partnerships.last() }?.let { partnership ->
-            Text("Partnership ${partnership.batterNames.joinToString(" & ")}  ${partnership.runs} (${partnership.balls})", color = Gold, modifier = Modifier.padding(top = 6.dp))
+            Spacer(Modifier.height(12.dp))
+            PartnershipCard(partnership)
         }
     }
     PitchCard {
@@ -739,6 +751,183 @@ private fun InningsTables(match: Match, innings: com.example.cricketscoring.mode
                     Text("${row.wickets}/${row.runs}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text("Eco ${row.economy.twoDecimals()}", color = Muted, fontSize = 11.sp)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YetToBatSection(
+    match: Match,
+    playerIds: List<String>,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    val visible = if (expanded) playerIds else playerIds.take(2)
+    val hiddenCount = (playerIds.size - visible.size).coerceAtLeast(0)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(PitchRaised)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clickable(enabled = playerIds.size > 2, onClick = onToggle),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Text("Yet to bat", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Text(
+                    if (expanded) "${playerIds.size} in the queue" else "Next up",
+                    color = Ink,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            if (playerIds.size > 2) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(match.style.accent().copy(alpha = 0.16f))
+                        .border(1.dp, match.style.accent().copy(alpha = 0.45f), RoundedCornerShape(999.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        if (expanded) "Collapse ▲" else "Expand +$hiddenCount ▼",
+                        color = match.style.accent(),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+        }
+        visible.forEach { id ->
+            val name = match.playerName(id)
+            val queueNumber = playerIds.indexOf(id) + 1
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(RadiusSm))
+                    .background(PitchCard)
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                PlayerAvatar(name, match.style.accent(), size = 32.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(name, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (queueNumber == 1) "Next batter" else "Waiting · position $queueNumber",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text("#$queueNumber", color = Muted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExtrasCard(extras: com.example.cricketscoring.model.Extras) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(PitchRaised)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Extras", fontWeight = FontWeight.Bold)
+            Text("${extras.total}", fontWeight = FontWeight.Black, fontSize = 20.sp, color = OpenTeal)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ExtraStatChip("Wd", extras.wides, Modifier.weight(1f))
+            ExtraStatChip("Nb", extras.noBalls, Modifier.weight(1f))
+            ExtraStatChip("B", extras.byes, Modifier.weight(1f))
+            ExtraStatChip("Lb", extras.legByes, Modifier.weight(1f))
+            ExtraStatChip("Pen", extras.penalties, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ExtraStatChip(label: String, value: Int, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(RadiusSm))
+            .background(PitchCard)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(label, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text("$value", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+@Composable
+private fun PartnershipCard(partnership: com.example.cricketscoring.model.Partnership) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(Gold.copy(alpha = 0.12f))
+            .border(1.dp, Gold.copy(alpha = 0.4f), RoundedCornerShape(RadiusMd))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("Partnership", color = Gold, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            partnership.batterNames.take(2).forEachIndexed { index, name ->
+                if (index > 0) {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Gold.copy(alpha = 0.2f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text("&", color = Gold, fontWeight = FontWeight.Black, fontSize = 11.sp)
+                    }
+                }
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(RadiusSm))
+                        .background(PitchCard)
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PlayerAvatar(name, Gold, size = 30.dp)
+                    Text(name, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(RadiusSm))
+                    .background(PitchCard)
+                    .padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("Runs", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("${partnership.runs}", fontWeight = FontWeight.Black, fontSize = 20.sp, color = Gold)
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(RadiusSm))
+                    .background(PitchCard)
+                    .padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("Balls", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("${partnership.balls}", fontWeight = FontWeight.Black, fontSize = 20.sp)
             }
         }
     }

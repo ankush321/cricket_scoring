@@ -26,14 +26,16 @@ import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.Player
 import com.example.cricketscoring.model.PlayingRole
 import com.example.cricketscoring.rules.styleTitle
+import com.example.cricketscoring.navigation.AppRoute
+import com.example.cricketscoring.navigation.LocalAppNavigator
 
 @Composable
 fun TeamsScreen(store: CricketStore) {
+    val navigator = LocalAppNavigator.current
     var creating by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PageHeading("Teams", "Sides and squads used across every cricket style.")
         store.data.teams.filterNot { it.archived }.forEach { team ->
-            SurfaceCard(elevation = ElevationMid, onClick = { store.push(Screen.TeamEdit(team.id)) }) {
+            SurfaceCard(elevation = ElevationMid, onClick = { navigator.navigate(AppRoute.TeamEdit(team.id)) }) {
                 Text(team.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(team.playerIds.joinToString { store.playerName(it) }.ifBlank { "No players" }, color = Muted)
             }
@@ -48,7 +50,7 @@ fun TeamsScreen(store: CricketStore) {
                 val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size])
                 if (team != null) {
                     creating = false
-                    store.push(Screen.TeamEdit(team.id))
+                    navigator.navigate(AppRoute.TeamEdit(team.id))
                 }
             },
         )
@@ -57,15 +59,16 @@ fun TeamsScreen(store: CricketStore) {
 
 @Composable
 fun TeamEditScreen(store: CricketStore, teamId: String?) {
+    val navigator = LocalAppNavigator.current
     val existing = store.data.teams.find { it.id == teamId }
     if (existing == null) {
         CreateTeamSheet(
-            onDismiss = { store.pop() },
+            onDismiss = { navigator.back() },
             onCreate = { teamName, players ->
                 val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size])
                 if (team != null) {
-                    store.pop()
-                    store.push(Screen.TeamEdit(team.id))
+                    navigator.back()
+                    navigator.navigate(AppRoute.TeamEdit(team.id))
                 }
             },
         )
@@ -74,7 +77,7 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
     var name by remember(teamId) { mutableStateOf(existing.name) }
     var playerName by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Team", onBack = { store.pop() })
+        ScreenHeader("Team", onBack = { navigator.back() })
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ContentBlock("Team details", "Update the name shown on fixtures.") {
                 NameField("Team name", name) { name = it }
@@ -152,7 +155,6 @@ fun PlayersScreen(store: CricketStore) {
     var editing by remember { mutableStateOf<Player?>(null) }
     var creating by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PageHeading("Players", "Names used across every cricket style.")
         store.data.players.sortedBy { it.name }.forEach { player ->
             SurfaceCard(elevation = ElevationMid, onClick = { editing = player }) {
                 Text(player.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -259,9 +261,10 @@ private fun PlayerRoleCard(
 
 @Composable
 fun StatsScreen(store: CricketStore) {
+    val navigator = LocalAppNavigator.current
     var style by remember { mutableStateOf(CricketStyle.UNDERARM_BOX) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ScreenHeader("Statistics", onBack = { store.pop() })
+        ScreenHeader("Statistics", onBack = { navigator.back() })
         Text("Figures stay separated by cricket style.", color = Muted)
         ChoiceRow(CricketStyle.entries.map { styleTitle(it).substringBefore(" ") to (style == it) }) { index ->
             style = CricketStyle.entries[index]

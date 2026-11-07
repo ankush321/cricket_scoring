@@ -38,31 +38,14 @@ import com.example.cricketscoring.model.MatchStatus
 import com.example.cricketscoring.rules.defaultRules
 import com.example.cricketscoring.rules.styleSummary
 import com.example.cricketscoring.rules.styleTitle
+import com.example.cricketscoring.navigation.AppRoute
+import com.example.cricketscoring.navigation.LocalAppNavigator
 
 private val tabs = listOf("Live", "Upcoming", "Completed", "Rules")
 
 @Composable
-fun MatchesHome(store: CricketStore) {
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        PageHeading("Fixtures", "Each cricket style keeps its own list of live, upcoming, and completed matches.")
-        CricketStyle.entries.forEach { style ->
-            val count = store.data.matches.count { it.style == style }
-            SurfaceCard(elevation = ElevationMid, accent = style.accent(), onClick = { store.openStyle(style, fromHome = false) }) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StyleMark(style)
-                    Column(Modifier.weight(1f)) {
-                        Text(styleTitle(style), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(if (count == 0) "No fixtures yet" else "$count fixtures", color = Muted)
-                    }
-                    Text("Open", color = style.accent(), fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun StyleHubScreen(store: CricketStore, style: CricketStyle) {
+    val navigator = LocalAppNavigator.current
     var tab by remember(style) { mutableIntStateOf(0) }
     var query by remember(style) { mutableStateOf("") }
     var sort by remember(style) { mutableStateOf("Recent") }
@@ -87,20 +70,20 @@ fun StyleHubScreen(store: CricketStore, style: CricketStyle) {
         status == MatchStatus.COMPLETED || status == MatchStatus.ABANDONED
     }.sortedByDescending { it.updatedAtEpochMs }.take(5)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        ScreenHeader(styleTitle(style), onBack = { store.pop() })
+        ScreenHeader(styleTitle(style), onBack = { navigator.back() })
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             PageHeading("Fixtures", "Resume a live game, review recent results, or start a new match.")
             SurfaceCard(elevation = ElevationHigh, accent = style.accent()) {
                 Text("Start a new match", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("Pick teams, confirm the format, then begin scoring.", color = Muted)
                 Spacer(Modifier.height(14.dp))
-                PrimaryButton("Start new match", { store.openWizard(style) }, Modifier.fillMaxWidth())
+                PrimaryButton("Start new match", { navigator.openWizard(style) }, Modifier.fillMaxWidth())
             }
             if (live.isNotEmpty()) {
                 ContentBlock("Live now", "Tap a fixture to continue scoring.") {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         live.forEach { match ->
-                            MatchRow(match, onOpen = { store.openMatch(match) }, onDuplicate = { store.duplicate(match) }, onDelete = { pendingDelete = match }, onShare = { store.shareText = scorecardText(match) })
+                            MatchRow(match, onOpen = { navigator.openMatch(match) }, onDuplicate = { navigator.duplicate(match) }, onDelete = { pendingDelete = match }, onShare = { store.shareText = scorecardText(match) })
                         }
                     }
                 }
@@ -109,7 +92,7 @@ fun StyleHubScreen(store: CricketStore, style: CricketStyle) {
                 ContentBlock("Recent results", "Open a completed scorecard or copy the setup.") {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         completed.forEach { match ->
-                            MatchRow(match, onOpen = { store.openMatch(match) }, onDuplicate = { store.duplicate(match) }, onDelete = { pendingDelete = match }, onShare = { store.shareText = scorecardText(match) })
+                            MatchRow(match, onOpen = { navigator.openMatch(match) }, onDuplicate = { navigator.duplicate(match) }, onDelete = { pendingDelete = match }, onShare = { store.shareText = scorecardText(match) })
                         }
                     }
                 }
@@ -152,6 +135,7 @@ private fun StyleMatchBrowser(
     filtered: List<Match>,
     onDelete: (Match?) -> Unit,
 ) {
+    val navigator = LocalAppNavigator.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         PrimaryScrollableTabRow(selectedTabIndex = tab, containerColor = PitchBlack, edgePadding = 12.dp) {
             tabs.forEachIndexed { index, label ->
@@ -169,7 +153,7 @@ private fun StyleMatchBrowser(
                 Text("No ${tabs[tab].lowercase()} matches yet.", color = Muted)
             } else {
                 filtered.forEach { match ->
-                    MatchRow(match, onOpen = { store.openMatch(match) }, onDuplicate = { store.duplicate(match) }, onDelete = { onDelete(match) }, onShare = {
+                    MatchRow(match, onOpen = { navigator.openMatch(match) }, onDuplicate = { navigator.duplicate(match) }, onDelete = { onDelete(match) }, onShare = {
                         store.shareText = scorecardText(match)
                     })
                 }
@@ -220,14 +204,15 @@ private fun MatchRow(match: Match, onOpen: () -> Unit, onDuplicate: () -> Unit, 
 
 @Composable
 private fun RulesTab(style: CricketStyle, store: CricketStore) {
+    val navigator = LocalAppNavigator.current
     val rules = defaultRules(style)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(styleSummary(style), color = Muted)
         Text(rules.name, style = MaterialTheme.typography.titleMedium)
         rules.organizerPrompts.forEach { prompt -> Notice(prompt) }
         Text("These are recommended starting points, not an official publication. A match keeps the rules it started with.", color = Muted)
-        SecondaryButton("Open the full comparison", { store.push(Screen.RulesGuide) })
-        PrimaryButton("Start a match with these rules", { store.openWizard(style) })
+        SecondaryButton("Open the full comparison", { navigator.navigate(AppRoute.RulesGuide) })
+        PrimaryButton("Start a match with these rules", { navigator.openWizard(style) })
     }
 }
 
