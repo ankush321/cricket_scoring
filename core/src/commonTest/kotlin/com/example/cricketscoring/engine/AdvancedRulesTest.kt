@@ -12,7 +12,6 @@ import com.example.cricketscoring.model.MatchPlayer
 import com.example.cricketscoring.model.OpeningPlayers
 import com.example.cricketscoring.model.RosterRules
 import com.example.cricketscoring.model.RulesProfile
-import com.example.cricketscoring.model.ScoringAwardMode
 import com.example.cricketscoring.persist.AppJson
 import com.example.cricketscoring.rules.boxDefaults
 import kotlin.test.Test
@@ -151,6 +150,18 @@ class AdvancedRulesTest {
         assertEquals(0, row(extrasOnly, "A1").runs)
         assertEquals(5, extrasOnly.extras.noBalls)
         assertEquals(5, extrasOnly.runs)
+    }
+
+    @Test
+    fun noBallDesignatedEightCreditsTheBatter() {
+        val event = boxDefaults().additionalScoring.events.first().copy(enabled = true, runs = 8)
+        val rules = boxDefaults().copy(additionalScoring = boxDefaults().additionalScoring.copy(events = listOf(event)))
+        val innings = play(rules).ball(BallInput(noBall = true, scoringEventId = event.id), "nb8").view().innings.single()
+        assertEquals(8, row(innings, "A1").runs)
+        assertEquals(1, innings.extras.noBalls)
+        assertEquals(9, innings.runs)
+        assertEquals(0, innings.legalBalls)
+        assertEquals("Designated zone hit, 8 runs", innings.deliveries.single().commentary)
     }
 
     @Test

@@ -51,6 +51,7 @@ import com.example.cricketscoring.engine.scoreLine
 import com.example.cricketscoring.engine.teamName
 import com.example.cricketscoring.engine.thisOver
 import com.example.cricketscoring.engine.twoDecimals
+import com.example.cricketscoring.model.AdditionalScoringEvent
 import com.example.cricketscoring.model.AppliedDelivery
 import com.example.cricketscoring.model.BallInput
 import com.example.cricketscoring.model.BoundaryMarker
@@ -105,7 +106,7 @@ fun LiveScreen(store: CricketStore, matchId: String) {
                     verticalPadding = 0.dp,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    PanelTabs(listOf("Live" to (panel == 0), "Scorecard" to (panel == 1), "Overs" to (panel == 2), "More" to (panel == 3))) {
+                    PanelTabs(modifier = Modifier.padding(top = 16.dp), listOf("Live" to (panel == 0), "Scorecard" to (panel == 1), "Overs" to (panel == 2), "More" to (panel == 3))) {
                         panel = it
                     }
                     AnimatedContent(targetState = panel, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "panel") { current ->
@@ -123,11 +124,10 @@ fun LiveScreen(store: CricketStore, matchId: String) {
                             }
                         }
                     }
+                    Spacer(Modifier.height(16.dp))
                 }
                 if (moreOpen) {
-                    MoreDialog(store, match, onWicket = { moreOpen = false; wicketOpen = true }, onWide = {
-                        store.score(match.id, BallInput(wide = true, underarmConfirmed = true)); moreOpen = false
-                    }, onNoBall = { moreOpen = false; noBallOpen = true }, onBye = { moreOpen = false; byeOpen = true }, onLegBye = { moreOpen = false; legByeOpen = true }, onFive = {
+                    MoreDialog(store, match, onLegBye = { moreOpen = false; legByeOpen = true }, onFive = {
                         store.score(match.id, runsInput(match, 5)); moreOpen = false
                     }, onBonus = { eventId ->
                         store.score(match.id, BallInput(scoringEventId = eventId, underarmConfirmed = true)); moreOpen = false
@@ -142,6 +142,9 @@ fun LiveScreen(store: CricketStore, matchId: String) {
                     ScoringPad(
                         match = match,
                         onRuns = { runs -> store.score(match.id, runsInput(match, runs)) },
+                        onDesignated = { eventId ->
+                            store.score(match.id, BallInput(scoringEventId = eventId, underarmConfirmed = true))
+                        },
                         onWide = { store.score(match.id, BallInput(wide = true, underarmConfirmed = true)) },
                         onNoBall = { noBallOpen = true },
                         onBye = { byeOpen = true },
@@ -158,9 +161,8 @@ fun LiveScreen(store: CricketStore, matchId: String) {
             wicketOpen = false
         }
     }
-    if (noBallOpen) RunsDialog("No-ball", "Runs off the bat", onDismiss = { noBallOpen = false }) { runs ->
-        val boundary = boundaryFor(match, runs)
-        store.score(match.id, BallInput(noBall = true, batterRuns = if (boundary == null) runs else 0, boundary = boundary, underarmConfirmed = true))
+    if (noBallOpen) NoBallDialog(match, onDismiss = { noBallOpen = false }) { runs ->
+        store.score(match.id, noBallInput(match, runs))
         noBallOpen = false
     }
     if (byeOpen) RunsDialog("Bye", "Byes", onDismiss = { byeOpen = false }, minimum = 1) { runs ->
@@ -367,6 +369,7 @@ private fun BowlerCard(
 private fun ScoringPad(
     match: Match,
     onRuns: (Int) -> Unit,
+    onDesignated: (String) -> Unit,
     onWide: () -> Unit,
     onNoBall: () -> Unit,
     onBye: () -> Unit,
@@ -374,6 +377,7 @@ private fun ScoringPad(
     onMore: () -> Unit,
 ) {
     val rules = match.rules
+    val designated = designatedScores(match)
     Column(
         Modifier
             .fillMaxWidth()
@@ -392,6 +396,16 @@ private fun ScoringPad(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ScorePadKey("6", "SIX", { onRuns(6) }, Modifier.weight(1f), accent = Gold.copy(alpha = 0.85f), contentColor = Color(0xFF241A05))
+            designated.forEach { event ->
+                ScorePadKey(
+                    "${event.runs}",
+                    "ZONE",
+                    { onDesignated(event.id) },
+                    Modifier.weight(1f),
+                    accent = Gold.copy(alpha = 0.7f),
+                    contentColor = Color(0xFF241A05),
+                )
+            }
             if (rules.extras.widesEnabled) {
                 ScorePadKey("WD", "WIDE", onWide, Modifier.weight(1f))
             }
@@ -601,13 +615,41 @@ private fun RunsDialog(title: String, label: String, onDismiss: () -> Unit, mini
 }
 
 @Composable
+private fun NoBallDialog(match: Match, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+    val choices = noBallChoices(match)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("No-ball") },
+        text = {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Runs off the bat", color = Muted)
+                choices.chunked(4).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { choice ->
+                            val accent = choice.highlight
+                            ScorePadKey(
+                                "${choice.runs}",
+                                choice.label,
+                                { onPick(choice.runs) },
+                                Modifier.weight(1f),
+                                accent = if (accent) Gold.copy(alpha = 0.85f) else PitchRaised,
+                                contentColor = if (accent) Color(0xFF241A05) else Ink,
+                            )
+                        }
+                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
 private fun MoreDialog(
     store: CricketStore,
     match: Match,
-    onWicket: () -> Unit,
-    onWide: () -> Unit,
-    onNoBall: () -> Unit,
-    onBye: () -> Unit,
     onLegBye: () -> Unit,
     onFive: () -> Unit,
     onBonus: (String) -> Unit,
@@ -626,33 +668,35 @@ private fun MoreDialog(
             Text("More", style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = onDismiss) { Text("Close") }
         }
+        val deliveryCap = rules.extras.maxRunsPerDelivery
+        val fiveAllowed = rules.boundaries.runningBetweenWicketsEnabled && (deliveryCap == null || deliveryCap >= 5)
         Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                SecondaryButton("Wicket", onWicket, Modifier.fillMaxWidth())
                 if (rules.boxOut.enabled) SecondaryButton("Box Out", onBoxOut, Modifier.fillMaxWidth())
-                if (rules.extras.widesEnabled) SecondaryButton("Wide", onWide, Modifier.fillMaxWidth())
-                if (rules.extras.noBallsEnabled) SecondaryButton("No-ball", onNoBall, Modifier.fillMaxWidth())
-                if (rules.extras.byesEnabled) SecondaryButton("Bye", onBye, Modifier.fillMaxWidth())
                 if (rules.extras.legByesEnabled) SecondaryButton("Leg-bye", onLegBye, Modifier.fillMaxWidth())
-                SecondaryButton("5 runs", onFive, Modifier.fillMaxWidth())
-                rules.additionalScoring.events.filter { it.enabled }.forEach { event ->
+                if (fiveAllowed) SecondaryButton("5 runs", onFive, Modifier.fillMaxWidth())
+                rules.additionalScoring.events.filter { it.enabled && !it.isDesignatedScore() }.forEach { event ->
                     SecondaryButton("${event.name} · ${event.runs}", { onBonus(event.id) }, Modifier.fillMaxWidth())
                 }
                 surfaceKeys(rules).forEach { (label, surface) ->
                     SecondaryButton(label, { onSurface(surface) }, Modifier.fillMaxWidth())
                 }
-                Text("Penalty runs: $penalty", color = Muted)
-                Row { (1..5).forEach { TextButton(onClick = { penalty = it }) { Text("$it") } } }
-                SecondaryButton("Add penalty", {
-                    store.score(match.id, BallInput(deadBall = true, penaltyRuns = penalty))
-                    onDismiss()
-                }, Modifier.fillMaxWidth())
-                Text("Overthrow off the bat. Completed $completed, extra $extra", color = Muted)
-                Row { (0..3).forEach { TextButton(onClick = { completed = it }) { Text("Hit $it") } } }
-                Row { (1..6).forEach { TextButton(onClick = { extra = it }) { Text("+$it") } } }
-                SecondaryButton("Add overthrow", {
-                    store.score(match.id, BallInput(batterRuns = completed, overthrowBatterRuns = extra, underarmConfirmed = true))
-                    onDismiss()
-                }, Modifier.fillMaxWidth())
+                if (rules.extras.penaltyRunsEnabled) {
+                    Text("Penalty runs: $penalty", color = Muted)
+                    Row { (1..5).forEach { TextButton(onClick = { penalty = it }) { Text("$it") } } }
+                    SecondaryButton("Add penalty", {
+                        store.score(match.id, BallInput(deadBall = true, penaltyRuns = penalty))
+                        onDismiss()
+                    }, Modifier.fillMaxWidth())
+                }
+                if (rules.extras.overthrowsEnabled) {
+                    Text("Overthrow off the bat. Completed $completed, extra $extra", color = Muted)
+                    Row { (0..3).forEach { TextButton(onClick = { completed = it }) { Text("Hit $it") } } }
+                    Row { (1..6).forEach { TextButton(onClick = { extra = it }) { Text("+$it") } } }
+                    SecondaryButton("Add overthrow", {
+                        store.score(match.id, BallInput(batterRuns = completed, overthrowBatterRuns = extra, underarmConfirmed = true))
+                        onDismiss()
+                    }, Modifier.fillMaxWidth())
+                }
                 SecondaryButton("Dead ball", {
                     store.score(match.id, BallInput(deadBall = true))
                     onDismiss()
@@ -1074,6 +1118,56 @@ private fun RosterActions(store: CricketStore, match: Match, derived: com.exampl
             })
         }
     }
+}
+
+private fun AdditionalScoringEvent.isDesignatedScore(): Boolean =
+    name.contains("designated", ignoreCase = true) || id.endsWith("-8")
+
+private fun designatedScores(match: Match): List<AdditionalScoringEvent> =
+    match.rules.additionalScoring.events.filter { it.enabled && it.isDesignatedScore() }
+
+private data class NoBallChoice(val runs: Int, val label: String, val highlight: Boolean = false)
+
+private fun noBallChoices(match: Match): List<NoBallChoice> {
+    val rules = match.rules
+    val room = rules.extras.maxRunsPerDelivery?.let { (it - rules.extras.noBallRuns).coerceAtLeast(0) }
+    fun allowed(runs: Int) = runs >= 0 && (room == null || runs <= room)
+    val choices = linkedMapOf<Int, NoBallChoice>()
+    fun add(runs: Int, label: String, highlight: Boolean = false) {
+        if (allowed(runs) && runs !in choices) choices[runs] = NoBallChoice(runs, label, highlight)
+    }
+    add(0, "DOT")
+    if (rules.boundaries.runningBetweenWicketsEnabled) {
+        add(1, "RUN")
+        add(2, "RUNS")
+        add(3, "RUNS")
+        add(5, "RUNS")
+    }
+    if (rules.boundaries.foursEnabled) add(rules.boundaries.fourRuns, "FOUR", highlight = true)
+    if (rules.boundaries.sixesEnabled) add(rules.boundaries.sixRuns, "SIX", highlight = true)
+    rules.additionalScoring.events.filter { it.enabled }.sortedBy { it.runs }.forEach { event ->
+        add(event.runs, if (event.isDesignatedScore()) "ZONE" else "BONUS", highlight = true)
+    }
+    return choices.values.sortedBy { it.runs }
+}
+
+private fun noBallInput(match: Match, runs: Int): BallInput {
+    val boundary = boundaryFor(match, runs)
+    val event = if (boundary == null) scoringEventForRuns(match, runs) else null
+    return BallInput(
+        noBall = true,
+        batterRuns = if (boundary == null && event == null) runs else 0,
+        boundary = boundary,
+        scoringEventId = event?.id,
+        underarmConfirmed = true,
+    )
+}
+
+private fun scoringEventForRuns(match: Match, runs: Int): AdditionalScoringEvent? {
+    if (runs == 0 || runs == 5 || runs in 1..3) return null
+    return match.rules.additionalScoring.events
+        .filter { it.enabled && it.runs == runs }
+        .minByOrNull { if (it.isDesignatedScore()) 0 else 1 }
 }
 
 private fun runsInput(match: Match, runs: Int): BallInput {

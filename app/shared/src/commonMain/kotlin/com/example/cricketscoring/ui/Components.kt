@@ -23,11 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -39,12 +34,17 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -425,12 +425,140 @@ fun NavGlyph(label: String, selected: Boolean) {
 }
 
 @Composable
-fun Disclosure(title: String, summary: String, content: @Composable () -> Unit) {
+fun Disclosure(
+    title: String,
+    summary: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SecondaryButton(if (open) "Hide $title" else title, { open = !open }, Modifier.fillMaxWidth())
-        if (!open) Text(summary, color = Muted)
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SurfaceCard(
+            elevation = ElevationMid,
+            onClick = { open = !open },
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (open) "Tap to hide" else summary,
+                        color = Muted,
+                        style = MaterialTheme.typography.bodyMedium,
+                        lineHeight = 20.sp,
+                    )
+                }
+                Text(
+                    if (open) "Hide" else "Show",
+                    color = Lawn,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
         if (open) content()
+    }
+}
+
+@Composable
+fun RuleFactRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    detail: String? = null,
+    positive: Boolean? = null,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                color = Muted,
+                style = MaterialTheme.typography.bodyLarge,
+                lineHeight = 22.sp,
+            )
+            StatusPill(text = value, positive = positive)
+        }
+        if (!detail.isNullOrBlank()) {
+            Text(
+                detail,
+                color = Muted,
+                style = MaterialTheme.typography.bodyMedium,
+                lineHeight = 22.sp,
+            )
+        }
+    }
+}
+
+@Composable
+fun StatusPill(
+    text: String,
+    modifier: Modifier = Modifier,
+    positive: Boolean? = null,
+) {
+    val tint = when (positive) {
+        true -> Lawn
+        false -> Muted
+        null -> Ink
+    }
+    val background = when (positive) {
+        true -> Lawn.copy(alpha = 0.16f)
+        false -> PitchRaised
+        null -> PitchRaised
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(background)
+            .border(
+                1.dp,
+                when (positive) {
+                    true -> Lawn.copy(alpha = 0.45f)
+                    false -> SoftWhite.copy(alpha = 0.08f)
+                    null -> SoftWhite.copy(alpha = 0.1f)
+                },
+                RoundedCornerShape(999.dp),
+            )
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Text(
+            text,
+            color = tint,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelLarge,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+fun ReviewSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    content: @Composable () -> Unit,
+) {
+    SurfaceCard(modifier = modifier, elevation = ElevationMid) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (!subtitle.isNullOrBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(subtitle, color = Muted, style = MaterialTheme.typography.bodyMedium, lineHeight = 22.sp)
+        }
+        Spacer(Modifier.height(14.dp))
+        content()
     }
 }
 
@@ -504,10 +632,10 @@ fun BallChip(
 }
 
 @Composable
-fun PanelTabs(options: List<Pair<String, Boolean>>, onSelect: (Int) -> Unit) {
+fun PanelTabs(modifier: Modifier, options: List<Pair<String, Boolean>>, onSelect: (Int) -> Unit) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(PitchRaised.copy(alpha = 0.55f))
@@ -552,7 +680,14 @@ fun ScorePadKey(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(title, color = contentColor, fontWeight = FontWeight.Black, fontSize = 20.sp, textAlign = TextAlign.Center)
-        Text(subtitle, color = contentColor.copy(alpha = 0.75f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(
+            subtitle,
+            color = contentColor.copy(alpha = 0.75f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -663,7 +798,7 @@ fun FieldLabel(text: String) {
 }
 
 @Composable
-fun IntField(label: String, value: Int?, onValue: (Int?) -> Unit) {
+fun IntField(label: String, value: Int?,modifier: Modifier = Modifier, onValue: (Int?) -> Unit, ) {
     var text by remember(value) { mutableStateOf(value?.toString().orEmpty()) }
     OutlinedTextField(
         value = text,
@@ -673,7 +808,7 @@ fun IntField(label: String, value: Int?, onValue: (Int?) -> Unit) {
             onValue(cleaned.toIntOrNull())
         },
         label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     )

@@ -77,10 +77,11 @@ fun StyleHubScreen(store: CricketStore, style: CricketStyle) {
         CommonColumn(
             modifier = Modifier.weight(1f),
             scrollable = true,
-            verticalPadding = AppScreenDefaults.Vertical,
+            verticalPadding = 0.dp,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             StyleHubIntro(
+                modifier = Modifier.padding(top = 16.dp),
                 style = style,
                 accent = accent,
                 onStart = { navigator.openWizard(style) },
@@ -132,11 +133,12 @@ fun StyleHubScreen(store: CricketStore, style: CricketStyle) {
 
 @Composable
 private fun StyleHubIntro(
+    modifier: Modifier = Modifier,
     style: CricketStyle,
     accent: Color,
     onStart: () -> Unit,
 ) {
-    SurfaceCard(elevation = ElevationHigh, accent = accent) {
+    SurfaceCard(modifier = modifier, elevation = ElevationHigh, accent = accent) {
         Text(
             styleSummary(style),
             color = Muted,
