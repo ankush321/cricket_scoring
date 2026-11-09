@@ -279,9 +279,13 @@ private fun PlayerRoleCard(
 fun StatsScreen(store: CricketStore) {
     val navigator = LocalAppNavigator.current
     var style by remember { mutableStateOf(CricketStyle.UNDERARM_BOX) }
+    var query by remember { mutableStateOf("") }
     val accent = style.accent()
+    val needle = query.trim()
     val rows = store.data.players.mapNotNull { player ->
         playerStats(store.data, player.id).find { it.style == style }?.let { player to it }
+    }.filter { (player, _) ->
+        needle.isEmpty() || player.name.contains(needle, ignoreCase = true)
     }.sortedByDescending { it.second.runs }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Statistics", onBack = { navigator.back() })
@@ -293,11 +297,23 @@ fun StatsScreen(store: CricketStore) {
             StatsStylePicker(style) { style = it }
             Text(styleTitle(style), color = accent, fontWeight = FontWeight.SemiBold)
             Text(styleSummary(style), color = Muted, style = MaterialTheme.typography.bodySmall)
+            NameField("Search a player", query) { query = it }
             if (rows.isEmpty()) {
                 PitchCard {
-                    Text("No matches in this style yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (needle.isEmpty()) "No matches in this style yet" else "No player found",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Spacer(Modifier.height(4.dp))
-                    Text("Player figures show up here after a ${styleTitle(style)} match is scored.", color = Muted)
+                    Text(
+                        if (needle.isEmpty()) {
+                            "Player figures show up here after a ${styleTitle(style)} match is scored."
+                        } else {
+                            "No one in ${styleTitle(style)} matches “$needle”."
+                        },
+                        color = Muted,
+                    )
                 }
             }
             rows.forEach { (player, stats) ->
