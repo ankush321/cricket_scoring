@@ -42,8 +42,20 @@ class AppNavigator(
     }
 
     override fun navigateRoot(route: AppRoute) {
+        val startId = navController.graph.startDestinationId
+        // Home is the start destination and stays under the other tabs.
+        // Navigating to it again is ignored, so pop back to the screen already there.
+        if (route == AppRoute.Home) {
+            if (navController.currentDestination?.id == startId) return
+            if (!navController.popBackStack(startId, inclusive = false)) {
+                navController.navigate(AppRoute.Home) {
+                    launchSingleTop = true
+                }
+            }
+            return
+        }
         navController.navigate(route) {
-            popUpTo(navController.graph.startDestinationId) {
+            popUpTo(startId) {
                 saveState = true
             }
             launchSingleTop = true

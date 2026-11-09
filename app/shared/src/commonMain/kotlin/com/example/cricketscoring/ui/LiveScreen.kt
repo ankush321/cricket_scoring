@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -95,6 +96,7 @@ fun LiveScreen(store: CricketStore, matchId: String) {
     var moreOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AppliedDelivery?>(null) }
     var panel by remember { mutableIntStateOf(0) }
+    var scorecardInnings by remember(match.id) { mutableIntStateOf(-1) }
     Column(Modifier.fillMaxSize().background(PitchBlack)) {
         LiveTopBar(
             title = match.title,
@@ -109,31 +111,41 @@ fun LiveScreen(store: CricketStore, matchId: String) {
             derived.needsBowler -> BowlerPrompt(store, match, innings)
             derived.breakPending || derived.superOverPending -> NextInningsPrompt(store, match, derived.superOverPending)
             else -> {
+                val waitingForOvers = panel == 2 && innings.overs.isEmpty()
                 CommonColumn(
                     modifier = Modifier.weight(1f),
-                    scrollable = true,
+                    scrollable = !waitingForOvers,
                     verticalPadding = 0.dp,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     PanelTabs(modifier = Modifier.padding(top = 16.dp), listOf("Live" to (panel == 0), "Scorecard" to (panel == 1), "Overs" to (panel == 2), "More" to (panel == 3))) {
                         panel = it
                     }
-                    AnimatedContent(targetState = panel, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "panel") { current ->
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                    if (waitingForOvers) {
+                        Box(
+                            Modifier.weight(1f).fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            when (current) {
-                                0 -> LiveBoard(match, derived, innings) { editing = it }
-                                1 -> InningsTables(match, innings)
-                                2 -> OversPanel(match, innings)
-                                else -> {
-                                    CommentaryPanel(match, innings)
-                                    MatchDetails(store, match, derived)
+                            OversWaiting(match, innings)
+                        }
+                    } else {
+                        AnimatedContent(targetState = panel, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "panel") { current ->
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                when (current) {
+                                    0 -> LiveBoard(match, derived, innings) { editing = it }
+                                    1 -> LiveScorecard(match, derived, scorecardInnings) { scorecardInnings = it }
+                                    2 -> OversPanel(match, innings)
+                                    else -> {
+                                        CommentaryPanel(match, innings)
+                                        MatchDetails(store, match, derived)
+                                    }
                                 }
                             }
                         }
+                        Spacer(Modifier.height(16.dp))
                     }
-                    Spacer(Modifier.height(16.dp))
                 }
                 if (moreOpen) {
                     MoreDialog(store, match, onLegBye = { moreOpen = false; legByeOpen = true }, onFive = {
@@ -227,6 +239,15 @@ private fun ScoreboardHero(
     innings: com.example.cricketscoring.model.DerivedInnings,
 ) {
     val accent = match.style.accent()
+    val active = derived.currentInnings()
+    val showingLive = active != null && active.index == innings.index && active.superOver == innings.superOver
+    val rate = if (showingLive) {
+        derived.currentRunRate
+    } else if (innings.legalBalls == 0) {
+        0.0
+    } else {
+        innings.runs * innings.ballsPerOver.toDouble() / innings.legalBalls
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -249,16 +270,20 @@ private fun ScoreboardHero(
                 Text(innings.oversLabel(), fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = accent, modifier = Modifier.padding(bottom = 8.dp))
                 Spacer(Modifier.weight(1f))
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("CURRENT RR", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(derived.currentRunRate?.twoDecimals() ?: "0.00", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(if (showingLive) "CURRENT RR" else "RUN RATE", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(rate?.twoDecimals() ?: "0.00", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 MetricChip("Overs", innings.maxLegalBalls?.let { "${innings.oversLabel()} / ${oversLabel(it, innings.ballsPerOver)}" } ?: innings.oversLabel(), Modifier.weight(1f))
-                innings.target?.let { MetricChip("Target", "$it", Modifier.weight(1f), highlight = true) }
-                derived.requiredRunRate?.let { MetricChip("Req RR", it.twoDecimals(), Modifier.weight(1f), highlight = true) }
+                if (showingLive) {
+                    innings.target?.let { MetricChip("Target", "$it", Modifier.weight(1f), highlight = true) }
+                    derived.requiredRunRate?.let { MetricChip("Req RR", it.twoDecimals(), Modifier.weight(1f), highlight = true) }
+                }
             }
-            derived.equation?.let { Text(it, color = Gold, fontWeight = FontWeight.SemiBold) }
+            if (showingLive) {
+                derived.equation?.let { Text(it, color = Gold, fontWeight = FontWeight.SemiBold) }
+            }
         }
     }
 }
@@ -1032,11 +1057,34 @@ private fun DeliveryDialog(match: Match, delivery: AppliedDelivery, onDismiss: (
 }
 
 @Composable
+private fun LiveScorecard(
+    match: Match,
+    derived: com.example.cricketscoring.model.DerivedMatch,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    val list = derived.innings
+    val selected = selectedIndex.takeIf { it in list.indices } ?: list.lastIndex
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        InningsSelector(
+            match = match,
+            innings = list,
+            selected = selected,
+            accent = match.style.accent(),
+            onSelect = onSelect,
+        )
+        list.getOrNull(selected)?.let { shown ->
+            ScoreboardHero(match, derived, shown)
+            InningsTables(match, shown)
+        }
+    }
+}
+
+@Composable
 private fun InningsTables(match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
     var yetToBatExpanded by remember { mutableStateOf(false) }
     PitchCard {
-        Text("${match.teamName(innings.battingTeamId)}  ${innings.scoreLine()}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("Batting", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+        Text("Batting", color = Muted, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(bottom = 8.dp))
         innings.battingRows.forEach { row ->
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 PlayerAvatar(row.name, match.style.accent(), size = 34.dp)
@@ -1278,7 +1326,10 @@ private fun PartnershipCard(partnership: com.example.cricketscoring.model.Partne
 @Composable
 private fun OversPanel(match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
     var open by remember { mutableStateOf(setOf<Int>()) }
-    if (innings.overs.isEmpty()) Text("No overs yet.", color = Muted)
+    if (innings.overs.isEmpty()) {
+        OversWaiting(match, innings)
+        return
+    }
     innings.overs.asReversed().forEach { over ->
         val number = over.overIndex + 1
         val expanded = over.overIndex in open
@@ -1301,6 +1352,76 @@ private fun OversPanel(match: Match, innings: com.example.cricketscoring.model.D
                         "${ball.symbol}  ${match.playerName(ball.batterId)}  ${ball.commentary ?: if (ball.legal) "legal" else "extra"}",
                         color = Muted,
                         modifier = Modifier.padding(vertical = 2.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OversWaiting(match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
+    val accent = match.style.accent()
+    val slots = innings.ballsPerOver.coerceIn(1, 8)
+    val bowler = innings.bowlerId?.let { match.playerName(it) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.verticalGradient(listOf(PitchRaised, PitchCard, PitchBlack)))
+            .border(1.dp, accent.copy(alpha = 0.28f), RoundedCornerShape(24.dp))
+            .padding(horizontal = 20.dp, vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(76.dp)
+                .clip(CircleShape)
+                .background(accent.copy(alpha = 0.1f))
+                .border(1.5.dp, accent.copy(alpha = 0.75f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("OVER", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text("1", color = accent, fontWeight = FontWeight.Black, fontSize = 26.sp, lineHeight = 26.sp)
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "The first over has not started",
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            if (bowler != null) "$bowler has the ball. Score a delivery and it will open this over."
+            else "Score a delivery and it will open this over.",
+            color = Muted,
+            textAlign = TextAlign.Center,
+            lineHeight = 20.sp,
+        )
+        Spacer(Modifier.height(20.dp))
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            repeat(slots) { index ->
+                val next = index == 0
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (next) accent.copy(alpha = 0.16f) else PitchBlack.copy(alpha = 0.45f))
+                        .border(1.dp, if (next) accent else Muted.copy(alpha = 0.28f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "${index + 1}",
+                        color = if (next) accent else Muted.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
                     )
                 }
             }

@@ -385,7 +385,7 @@ private fun PerformerTile(
 }
 
 @Composable
-private fun InningsSelector(
+internal fun InningsSelector(
     match: Match,
     innings: List<DerivedInnings>,
     selected: Int,
@@ -414,6 +414,7 @@ private fun InningsSelector(
                     buildString {
                         append(match.teamShort(item.battingTeamId))
                         if (item.superOver) append(" · SO") else append(" · Inn ${item.index + 1}")
+                        if (!item.complete) append(" · Live")
                     },
                     color = if (active) accent else Muted,
                     fontWeight = FontWeight.Bold,
