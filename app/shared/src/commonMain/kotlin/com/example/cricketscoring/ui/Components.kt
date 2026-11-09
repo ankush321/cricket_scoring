@@ -22,11 +22,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -53,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.cricketscoring.model.CricketStyle
 import com.example.cricketscoring.model.DismissalType
+import com.example.cricketscoring.model.Player
 import com.example.cricketscoring.model.PlayingRole
 import com.example.cricketscoring.model.RuleDisposition
 import com.example.cricketscoring.rules.styleTitle
@@ -312,19 +321,27 @@ fun BottomSheet(
 }
 
 @Composable
-fun CreateTeamSheet(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
+fun CreateTeamSheet(
+    store: CricketStore,
+    onDismiss: () -> Unit,
+    onCreate: (name: String, newNames: String, existingPlayerIds: List<String>) -> Unit,
+) {
     var name by remember { mutableStateOf("") }
     var playerDraft by remember { mutableStateOf("") }
-    var players by remember { mutableStateOf(listOf<String>()) }
+    var players by remember { mutableStateOf(listOf<SquadDraft>()) }
+    val pickedIds = players.mapNotNull { it.existingId }.toSet()
+    val available = store.data.players
+        .filter { it.id !in pickedIds }
+        .sortedBy { it.name.lowercase() }
     BottomSheet(
         onDismiss = onDismiss,
         title = "New team",
-        subtitle = "Name the side, then add players one by one.",
+        subtitle = "Name the side, then add new players or pick ones already saved.",
     ) {
         ContentBlock("Team details", "This name appears on fixtures and scorecards.") {
             NameField("Team name", name) { name = it }
         }
-        ContentBlock("Players", "Add each player separately. You need at least one.") {
+        ContentBlock("Players", "Type a new name, or choose someone from your players list. You need at least one.") {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -340,19 +357,27 @@ fun CreateTeamSheet(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
                 verticalAlignment = Alignment.Bottom,
             ) {
                 Box(Modifier.weight(1f)) {
-                    NameField("Player name", playerDraft) { playerDraft = it }
+                    NameField("New player name", playerDraft) { playerDraft = it }
                 }
                 SecondaryButton("Add", {
                     val next = playerDraft.trim()
-                    if (next.isNotEmpty() && players.none { it.equals(next, ignoreCase = true) }) {
-                        players = players + next
+                    if (next.isNotEmpty() && players.none { it.name.equals(next, ignoreCase = true) }) {
+                        players = players + SquadDraft(existingId = null, name = next)
                         playerDraft = ""
                     }
                 })
             }
+            if (available.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                SavedPlayersSection(available, note = { savedPlayerNote(store, it) }) { player ->
+                    if (players.none { it.existingId == player.id }) {
+                        players = players + SquadDraft(player.id, player.name)
+                    }
+                }
+            }
             Spacer(Modifier.size(20.dp))
             if (players.isEmpty()) {
-                Text("No players yet. Add the first name above.", color = Muted)
+                Text("No players yet. Type a name or pick a saved player.", color = Muted)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     players.forEachIndexed { index, player ->
@@ -365,17 +390,29 @@ fun CreateTeamSheet(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            PlayerAvatar(player, ActionCoral, size = 34.dp)
+                            PlayerAvatar(player.name, if (player.existingId == null) ActionCoral else Lawn, size = 34.dp)
                             Column(Modifier.weight(1f)) {
-                                Text(player, fontWeight = FontWeight.SemiBold)
-                                Text("Player ${index + 1}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                Text(player.name, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (player.existingId == null) "New player" else "Saved player",
+                                    color = Muted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
-                            Text(
-                                "Remove",
-                                color = WicketRed,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.clickable { players = players.filterIndexed { i, _ -> i != index } },
-                            )
+                            Box(
+                                Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable { players = players.filterIndexed { i, _ -> i != index } },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Remove",
+                                    tint = WicketRed,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -383,12 +420,94 @@ fun CreateTeamSheet(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
         }
         PrimaryButton(
             "Save team",
-            { onCreate(name, players.joinToString("\n")) },
+            {
+                onCreate(
+                    name,
+                    players.filter { it.existingId == null }.joinToString("\n") { it.name },
+                    players.mapNotNull { it.existingId },
+                )
+            },
             Modifier.fillMaxWidth(),
             enabled = name.trim().isNotEmpty() && players.isNotEmpty(),
         )
         SecondaryButton("Cancel", onDismiss, Modifier.fillMaxWidth())
     }
+}
+
+private data class SquadDraft(val existingId: String?, val name: String)
+
+@Composable
+fun SavedPlayersSection(
+    players: List<Player>,
+    note: (Player) -> String,
+    onAdd: (Player) -> Unit,
+) {
+    if (players.isEmpty()) return
+    var open by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    val needle = query.trim()
+    val matches = players.filter { needle.isEmpty() || it.name.contains(needle, ignoreCase = true) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(RadiusMd))
+                .background(PitchRaised)
+                .clickable { open = !open }
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Saved players", fontWeight = FontWeight.SemiBold)
+                Text("${players.size} available", color = Muted, style = MaterialTheme.typography.bodySmall)
+            }
+            CollapseChevron(open, description = if (open) "Hide saved players" else "Show saved players")
+        }
+        if (open) {
+            NameField("Search saved players", query) { query = it }
+            if (matches.isEmpty()) {
+                Text("No saved player matches “$needle”.", color = Muted)
+            } else {
+                matches.forEach { player ->
+                    ExistingPlayerRow(player.name, note(player)) { onAdd(player) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ExistingPlayerRow(name: String, note: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(PitchRaised)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        PlayerAvatar(name, Lawn, size = 34.dp)
+        Column(Modifier.weight(1f)) {
+            Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (note.isNotBlank()) {
+                Text(note, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Icon(
+            Icons.Filled.Add,
+            contentDescription = "Add",
+            tint = Lawn,
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+fun savedPlayerNote(store: CricketStore, player: Player): String {
+    val teams = store.data.teams.filter { !it.archived && player.id in it.playerIds }.joinToString { it.name }
+    return listOfNotNull(player.role.displayName(), teams.ifBlank { null }).joinToString(" · ")
 }
 
 @Composable
@@ -454,12 +573,7 @@ fun Disclosure(
                         lineHeight = 20.sp,
                     )
                 }
-                Text(
-                    if (open) "Hide" else "Show",
-                    color = Lawn,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.labelLarge,
-                )
+                CollapseChevron(open)
             }
         }
         if (open) content()
@@ -917,18 +1031,45 @@ fun InlineActions(vararg actions: Pair<String, () -> Unit>) {
 }
 
 @Composable
-fun ScreenHeader(title: String, onBack: (() -> Unit)? = null, action: String? = null, onAction: (() -> Unit)? = null) {
+fun ScreenHeader(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    action: String? = null,
+    actionIcon: ImageVector? = null,
+    onAction: (() -> Unit)? = null,
+) {
     AppToolbar(
         title = title,
         onBack = onBack,
         actions = {
-            if (action != null && onAction != null) {
+            if (onAction != null && actionIcon != null) {
+                IconButton(onClick = onAction) {
+                    Icon(actionIcon, contentDescription = action ?: "Action", tint = Lawn)
+                }
+            } else if (action != null && onAction != null) {
                 TextButton(onClick = onAction) {
                     Text(action, color = Lawn, fontWeight = FontWeight.SemiBold)
                 }
             }
         },
     )
+}
+
+@Composable
+fun CollapseChevron(open: Boolean, tint: Color = Lawn, description: String = if (open) "Hide" else "Show") {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(tint.copy(alpha = 0.16f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+            contentDescription = description,
+            tint = tint,
+        )
+    }
 }
 
 @Composable

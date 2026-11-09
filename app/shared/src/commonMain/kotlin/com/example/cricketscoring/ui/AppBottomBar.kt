@@ -17,6 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.SportsCricket
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,12 +129,11 @@ private fun AppBottomBarItem(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = tab.glyph,
-                color = accent,
-                fontWeight = FontWeight.Black,
-                fontSize = 11.sp,
-                letterSpacing = 0.4.sp,
+            Icon(
+                imageVector = tab.icon(),
+                contentDescription = tab.label,
+                tint = accent,
+                modifier = Modifier.size(20.dp),
             )
         }
         Text(
@@ -143,6 +150,14 @@ private fun AppBottomBarItem(
                 .background(if (selected) Lawn else SoftWhite.copy(alpha = 0f)),
         )
     }
+}
+
+private fun AppTab.icon(): ImageVector = when (this) {
+    AppTab.Home -> Icons.Filled.Home
+    AppTab.Fixtures -> Icons.Filled.SportsCricket
+    AppTab.Teams -> Icons.Filled.Groups
+    AppTab.Players -> Icons.Filled.Person
+    AppTab.More -> Icons.Filled.MoreHoriz
 }
 
 @Preview

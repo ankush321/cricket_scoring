@@ -57,9 +57,10 @@ fun TeamsScreen(store: CricketStore) {
     }
     if (creating) {
         CreateTeamSheet(
+            store = store,
             onDismiss = { creating = false },
-            onCreate = { teamName, players ->
-                val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size])
+            onCreate = { teamName, players, existingIds ->
+                val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size], existingIds)
                 if (team != null) {
                     creating = false
                     navigator.navigate(AppRoute.TeamEdit(team.id))
@@ -75,9 +76,10 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
     val existing = store.data.teams.find { it.id == teamId }
     if (existing == null) {
         CreateTeamSheet(
+            store = store,
             onDismiss = { navigator.back() },
-            onCreate = { teamName, players ->
-                val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size])
+            onCreate = { teamName, players, existingIds ->
+                val team = store.createTeam(teamName, players, teamPalette[store.data.teams.size % teamPalette.size], existingIds)
                 if (team != null) {
                     navigator.back()
                     navigator.navigate(AppRoute.TeamEdit(team.id))
@@ -111,7 +113,7 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
                         store.showToast("Team saved.", AppToastType.Success)
                     })
             }
-            ContentBlock("Players", "Add names one at a time. Assign captain and keeper below.") {
+            ContentBlock("Players", "Type a new name, or add someone already saved. Assign captain and keeper below.") {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -140,6 +142,15 @@ fun TeamEditScreen(store: CricketStore, teamId: String?) {
                         playerName = ""
                     }
                 )
+                val available = store.data.players
+                    .filter { it.id !in existing.playerIds }
+                    .sortedBy { it.name.lowercase() }
+                if (available.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    SavedPlayersSection(available, note = { savedPlayerNote(store, it) }) { player ->
+                        store.addExistingPlayerToTeam(existing.id, player.id)
+                    }
+                }
             }
             ContentBlock("Roles", "Set each player's role, then pick captain and keeper.") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -61,12 +61,12 @@ sealed interface AppRoute {
     data object RulesGuide : AppRoute
 }
 
-enum class AppTab(val route: AppRoute, val glyph: String, val label: String) {
-    Home(AppRoute.Home, "HM", "Home"),
-    Fixtures(AppRoute.Fixtures, "FX", "Fixtures"),
-    Teams(AppRoute.Teams, "TM", "Teams"),
-    Players(AppRoute.Players, "PL", "Players"),
-    More(AppRoute.More, "···", "More"),
+enum class AppTab(val route: AppRoute, val label: String) {
+    Home(AppRoute.Home, "Home"),
+    Fixtures(AppRoute.Fixtures, "Fixtures"),
+    Teams(AppRoute.Teams, "Teams"),
+    Players(AppRoute.Players, "Players"),
+    More(AppRoute.More, "More"),
 }
 
 fun AppRoute.showsBottomBar(): Boolean = when (this) {

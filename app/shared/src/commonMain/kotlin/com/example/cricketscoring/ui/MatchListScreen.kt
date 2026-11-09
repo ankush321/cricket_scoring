@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +25,7 @@ import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -296,11 +299,18 @@ private fun MatchRow(
             }
         }
         Spacer(Modifier.height(12.dp))
-        InlineActions(
-            "Open" to onOpen,
-            "Copy setup" to onDuplicate,
-            "Share" to onShare,
-        )
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onOpen) {
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open", tint = Lawn)
+            }
+            TextButton(onClick = onDuplicate) { Text("Copy setup") }
+            IconButton(onClick = onShare) {
+                Icon(Icons.Filled.Share, contentDescription = "Share", tint = Lawn)
+            }
+        }
     }
 }
 

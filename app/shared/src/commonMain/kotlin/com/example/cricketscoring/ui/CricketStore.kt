@@ -102,28 +102,31 @@ class CricketStore(private val repository: AppRepository) {
         draft = draftFrom(match).copy(existingMatchId = null, step = 1, strikerId = null, nonStrikerId = null, bowlerId = null)
     }
 
-    fun createTeam(name: String, playerLines: String, color: Int): Team? {
+    fun createTeam(name: String, playerLines: String, color: Int, existingPlayerIds: List<String> = emptyList()): Team? {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) {
             showToast("Give the team a name.", AppToastType.Warning)
             return null
         }
-        val names = playerLines.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (names.isEmpty()) {
+        val kept = existingPlayerIds.distinct().mapNotNull { id -> data.players.find { it.id == id } }
+        val names = playerLines.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase() }
+        if (kept.isEmpty() && names.isEmpty()) {
             showToast("Add at least one player.", AppToastType.Warning)
             return null
         }
-        val players = names.map { playerName -> Player(freshId("player"), playerName) }
+        val created = names.map { playerName -> Player(freshId("player"), playerName) }
+        val squad = kept + created
         val team = Team(
             id = freshId("team"),
             name = trimmed,
             shortName = shortName(trimmed),
             color = color,
-            playerIds = players.map { it.id },
-            captainId = players.first().id,
-            wicketkeeperId = players.first().id,
+            playerIds = squad.map { it.id },
+            captainId = squad.first().id,
+            wicketkeeperId = squad.first().id,
         )
-        update { it.copy(players = it.players + players, teams = it.teams + team) }
+        update { it.copy(players = it.players + created, teams = it.teams + team) }
         return team
     }
 
@@ -135,6 +138,21 @@ class CricketStore(private val repository: AppRepository) {
                 current.teams + team
             }
             current.copy(teams = teams)
+        }
+    }
+
+    fun addExistingPlayerToTeam(teamId: String, playerId: String) {
+        if (data.players.none { it.id == playerId }) return
+        update { current ->
+            current.copy(
+                teams = current.teams.map { team ->
+                    if (team.id == teamId && playerId !in team.playerIds) {
+                        team.copy(playerIds = team.playerIds + playerId)
+                    } else {
+                        team
+                    }
+                },
+            )
         }
     }
 
@@ -259,6 +277,7 @@ class CricketStore(private val repository: AppRepository) {
     }
 
     fun deleteMatch(matchId: String) {
+        undoneEvents.remove(matchId)
         update { current ->
             current.copy(
                 matches = current.matches.filterNot { it.id == matchId },
@@ -270,35 +289,69 @@ class CricketStore(private val repository: AppRepository) {
         showToast("Match deleted.", AppToastType.Success)
     }
 
-    fun apply(matchId: String, block: (Match) -> com.example.cricketscoring.model.EngineOutcome) {
-        val match = data.matches.find { it.id == matchId } ?: return
+    private val undoneEvents = mutableMapOf<String, List<MatchEvent>>()
+
+    fun canUndo(matchId: String): Boolean =
+        data.matches.find { it.id == matchId }?.events?.isNotEmpty() == true
+
+    fun canRedo(matchId: String): Boolean = undoneEvents[matchId]?.isNotEmpty() == true
+
+    private fun apply(matchId: String, block: (Match) -> com.example.cricketscoring.model.EngineOutcome): Boolean {
+        val match = data.matches.find { it.id == matchId } ?: return false
         val outcome = block(match)
         val updated = outcome.match
         if (outcome.code == EngineCode.OK && updated != null) {
             val saved = updated.copy(updatedAtEpochMs = nowMillis())
             update { current -> current.copy(matches = current.matches.map { if (it.id == matchId) saved else it }) }
-        } else {
-            showToast(outcome.message ?: "That action is not allowed.", AppToastType.Error)
+            return true
         }
+        showToast(outcome.message ?: "That action is not allowed.", AppToastType.Error)
+        return false
+    }
+
+    private fun commit(matchId: String, block: (Match) -> com.example.cricketscoring.model.EngineOutcome) {
+        if (apply(matchId, block)) undoneEvents.remove(matchId)
     }
 
     fun score(matchId: String, input: BallInput) {
-        apply(matchId) { MatchEngine.append(it, MatchEvent.Ball(freshId("ball"), input.copy(timestampEpochMs = nowMillis()))) }
+        commit(matchId) { MatchEngine.append(it, MatchEvent.Ball(freshId("ball"), input.copy(timestampEpochMs = nowMillis()))) }
     }
 
-    fun undo(matchId: String) = apply(matchId) { MatchEngine.undo(it) }
+    fun undo(matchId: String) {
+        val last = data.matches.find { it.id == matchId }?.events?.lastOrNull()
+        if (last == null) {
+            showToast("Nothing to undo.", AppToastType.Warning)
+            return
+        }
+        if (apply(matchId) { MatchEngine.undo(it) }) {
+            undoneEvents[matchId] = undoneEvents[matchId].orEmpty() + last
+        }
+    }
+
+    fun redo(matchId: String) {
+        val stack = undoneEvents[matchId].orEmpty()
+        val event = stack.lastOrNull()
+        if (event == null) {
+            showToast("Nothing to redo.", AppToastType.Warning)
+            return
+        }
+        if (apply(matchId) { MatchEngine.append(it, event) }) {
+            val left = stack.dropLast(1)
+            if (left.isEmpty()) undoneEvents.remove(matchId) else undoneEvents[matchId] = left
+        }
+    }
 
     fun replaceBall(matchId: String, eventId: String, input: BallInput) {
-        apply(matchId) { match ->
+        commit(matchId) { match ->
             MatchEngine.replaceEvent(match, eventId, MatchEvent.Ball(eventId, input.copy(timestampEpochMs = nowMillis())))
         }
     }
 
     fun nextBatter(matchId: String, playerId: String) =
-        apply(matchId) { MatchEngine.append(it, MatchEvent.NextBatter(freshId("batter"), playerId)) }
+        commit(matchId) { MatchEngine.append(it, MatchEvent.NextBatter(freshId("batter"), playerId)) }
 
     fun nextBowler(matchId: String, playerId: String) =
-        apply(matchId) { MatchEngine.append(it, MatchEvent.NextBowler(freshId("bowler"), playerId)) }
+        commit(matchId) { MatchEngine.append(it, MatchEvent.NextBowler(freshId("bowler"), playerId)) }
 
     fun setBreakMinutes(matchId: String, minutes: Int) {
         val bounded = minutes.coerceIn(0, 60)
@@ -316,38 +369,38 @@ class CricketStore(private val repository: AppRepository) {
         } else {
             MatchEvent.StartNextInnings(freshId("innings"), striker, nonStriker, bowler)
         }
-        apply(matchId) { MatchEngine.append(it, event) }
+        commit(matchId) { MatchEngine.append(it, event) }
     }
 
-    fun followOn(matchId: String) = apply(matchId) { MatchEngine.append(it, MatchEvent.EnforceFollowOn(freshId("follow"))) }
+    fun followOn(matchId: String) = commit(matchId) { MatchEngine.append(it, MatchEvent.EnforceFollowOn(freshId("follow"))) }
 
     fun closeInnings(matchId: String) =
-        apply(matchId) { MatchEngine.append(it, MatchEvent.CloseInnings(freshId("close"), "Ended by the scorer")) }
+        commit(matchId) { MatchEngine.append(it, MatchEvent.CloseInnings(freshId("close"), "Ended by the scorer")) }
 
     fun abandon(matchId: String, reason: String) =
-        apply(matchId) { MatchEngine.append(it, MatchEvent.Abandon(freshId("abandon"), reason.ifBlank { "Abandoned" })) }
+        commit(matchId) { MatchEngine.append(it, MatchEvent.Abandon(freshId("abandon"), reason.ifBlank { "Abandoned" })) }
 
     fun concede(matchId: String, teamId: String) =
-        apply(matchId) { MatchEngine.append(it, MatchEvent.Concede(freshId("concede"), teamId)) }
+        commit(matchId) { MatchEngine.append(it, MatchEvent.Concede(freshId("concede"), teamId)) }
 
     fun retire(matchId: String, playerId: String, hurt: Boolean) =
-        apply(matchId) { MatchEngine.append(it, MatchEvent.RetireBatter(freshId("retire"), playerId, hurt)) }
+        commit(matchId) { MatchEngine.append(it, MatchEvent.RetireBatter(freshId("retire"), playerId, hurt)) }
 
     fun award(matchId: String, playerId: String) =
-        apply(matchId) { MatchEngine.append(it, MatchEvent.PlayerOfTheMatch(freshId("award"), playerId)) }
+        commit(matchId) { MatchEngine.append(it, MatchEvent.PlayerOfTheMatch(freshId("award"), playerId)) }
 
     fun switchPlayer(matchId: String, teamId: String, outgoingId: String, incoming: MatchPlayer, reason: String, injured: Boolean, approvalA: Boolean, approvalB: Boolean) =
-        apply(matchId) {
+        commit(matchId) {
             MatchEngine.append(it, MatchEvent.SwitchPlayer(freshId("switch"), teamId, outgoingId, incoming, reason, injured, approvalA, approvalB, timestampEpochMs = nowMillis()))
         }
 
     fun addMatchPlayer(matchId: String, teamId: String, player: MatchPlayer, reason: String, approvalA: Boolean, approvalB: Boolean) =
-        apply(matchId) {
+        commit(matchId) {
             MatchEngine.append(it, MatchEvent.AddPlayer(freshId("add"), teamId, player, reason, approvalA, approvalB, timestampEpochMs = nowMillis()))
         }
 
     fun lendPlayer(matchId: String, fromTeamId: String, toTeamId: String, playerId: String, reason: String, temporary: Boolean, approvalA: Boolean, approvalB: Boolean) =
-        apply(matchId) {
+        commit(matchId) {
             MatchEngine.append(it, MatchEvent.LendPlayer(freshId("loan"), fromTeamId, toTeamId, playerId, reason, temporary, approvalA, approvalB, timestampEpochMs = nowMillis()))
         }
 

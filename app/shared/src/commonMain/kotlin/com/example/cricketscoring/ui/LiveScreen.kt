@@ -25,7 +25,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,13 +107,26 @@ fun LiveScreen(store: CricketStore, matchId: String) {
             title = match.title,
             live = derived.status == MatchStatus.LIVE || derived.status == MatchStatus.SUPER_OVER,
             onBack = { navigator.back() },
-            onUndo = { store.undo(match.id) },
         )
         when {
             derived.status == MatchStatus.COMPLETED || derived.status == MatchStatus.ABANDONED -> ResultPanel(store, match)
             innings == null -> CommonColumn(scrollable = false) { Text("This match has not started.") }
-            derived.needsBatter -> BatterPrompt(store, match, innings)
-            derived.needsBowler -> BowlerPrompt(store, match, innings)
+            derived.needsBatter -> BatterPrompt(
+                store,
+                match,
+                derived,
+                innings,
+                canUndo = store.canUndo(match.id),
+                canRedo = store.canRedo(match.id),
+            )
+            derived.needsBowler -> BowlerPrompt(
+                store,
+                match,
+                derived,
+                innings,
+                canUndo = store.canUndo(match.id),
+                canRedo = store.canRedo(match.id),
+            )
             derived.breakPending || derived.superOverPending -> NextInningsPrompt(store, match, derived.superOverPending)
             else -> {
                 val waitingForOvers = panel == 2 && innings.overs.isEmpty()
@@ -134,8 +152,24 @@ fun LiveScreen(store: CricketStore, matchId: String) {
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 when (current) {
-                                    0 -> LiveBoard(match, derived, innings) { editing = it }
-                                    1 -> LiveScorecard(match, derived, scorecardInnings) { scorecardInnings = it }
+                                    0 -> LiveBoard(
+                                        match,
+                                        derived,
+                                        innings,
+                                        canUndo = store.canUndo(match.id),
+                                        canRedo = store.canRedo(match.id),
+                                        onUndo = { store.undo(match.id) },
+                                        onRedo = { store.redo(match.id) },
+                                    ) { editing = it }
+                                    1 -> LiveScorecard(
+                                        match,
+                                        derived,
+                                        scorecardInnings,
+                                        canUndo = store.canUndo(match.id),
+                                        canRedo = store.canRedo(match.id),
+                                        onUndo = { store.undo(match.id) },
+                                        onRedo = { store.redo(match.id) },
+                                    ) { scorecardInnings = it }
                                     2 -> OversPanel(match, innings)
                                     else -> {
                                         CommentaryPanel(match, innings)
@@ -203,16 +237,13 @@ fun LiveScreen(store: CricketStore, matchId: String) {
 }
 
 @Composable
-private fun LiveTopBar(title: String, live: Boolean, onBack: () -> Unit, onUndo: () -> Unit) {
+private fun LiveTopBar(title: String, live: Boolean, onBack: () -> Unit) {
     AppToolbar(
         title = title,
         onBack = onBack,
         actions = {
             if (live) {
                 LiveBadge(Modifier.padding(end = 4.dp))
-            }
-            TextButton(onClick = onUndo) {
-                Text("Undo", color = Lawn, fontWeight = FontWeight.SemiBold)
             }
         },
     )
@@ -223,9 +254,13 @@ private fun LiveBoard(
     match: Match,
     derived: com.example.cricketscoring.model.DerivedMatch,
     innings: com.example.cricketscoring.model.DerivedInnings,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
     onBall: (AppliedDelivery) -> Unit,
 ) {
-    ScoreboardHero(match, derived, innings)
+    ScoreboardHero(match, derived, innings, steps = true, canUndo = canUndo, canRedo = canRedo, onUndo = onUndo, onRedo = onRedo)
     BattersCard(match, derived, innings)
     BowlerCard(match, innings, onBall)
     if (derived.freeHit) Notice("Free hit. Only a run out, obstructing the field, or hit the ball twice can dismiss the batter.")
@@ -237,6 +272,11 @@ private fun ScoreboardHero(
     match: Match,
     derived: com.example.cricketscoring.model.DerivedMatch,
     innings: com.example.cricketscoring.model.DerivedInnings,
+    steps: Boolean = false,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndo: () -> Unit = {},
+    onRedo: () -> Unit = {},
 ) {
     val accent = match.style.accent()
     val active = derived.currentInnings()
@@ -269,9 +309,14 @@ private fun ScoreboardHero(
                 }
                 Text(innings.oversLabel(), fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = accent, modifier = Modifier.padding(bottom = 8.dp))
                 Spacer(Modifier.weight(1f))
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(if (showingLive) "CURRENT RR" else "RUN RATE", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(rate?.twoDecimals() ?: "0.00", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (steps) {
+                        ScoreSteps(canUndo, canRedo, onUndo, onRedo)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(if (showingLive) "CURRENT RR" else "RUN RATE", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(rate?.twoDecimals() ?: "0.00", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -285,6 +330,28 @@ private fun ScoreboardHero(
                 derived.equation?.let { Text(it, color = Gold, fontWeight = FontWeight.SemiBold) }
             }
         }
+    }
+}
+
+@Composable
+private fun ScoreSteps(canUndo: Boolean, canRedo: Boolean, onUndo: () -> Unit, onRedo: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ScoreStepButton(Icons.AutoMirrored.Filled.Undo, "Score back", canUndo, onUndo)
+        ScoreStepButton(Icons.AutoMirrored.Filled.Redo, "Score forward", canRedo, onRedo)
+    }
+}
+
+@Composable
+private fun ScoreStepButton(icon: ImageVector, description: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(if (enabled) Lawn.copy(alpha = 0.16f) else PitchBlack.copy(alpha = 0.35f))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = description, tint = if (enabled) Lawn else Muted, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -456,9 +523,17 @@ private fun ScoringPad(
 }
 
 @Composable
-private fun BatterPrompt(store: CricketStore, match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
+private fun BatterPrompt(
+    store: CricketStore,
+    match: Match,
+    derived: com.example.cricketscoring.model.DerivedMatch,
+    innings: com.example.cricketscoring.model.DerivedInnings,
+    canUndo: Boolean,
+    canRedo: Boolean,
+) {
     val ids = innings.yetToBat + innings.battingRows.filter { it.retiredHurt }.map { it.playerId }
     CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ScoreboardHero(match, derived, innings, steps = true, canUndo = canUndo, canRedo = canRedo, onUndo = { store.undo(match.id) }, onRedo = { store.redo(match.id) })
         Text("Next batter", style = MaterialTheme.typography.headlineSmall)
         ids.distinct().forEach { id ->
             PrimaryButton(match.playerName(id), { store.nextBatter(match.id, id) }, Modifier.fillMaxWidth())
@@ -468,7 +543,14 @@ private fun BatterPrompt(store: CricketStore, match: Match, innings: com.example
 }
 
 @Composable
-private fun BowlerPrompt(store: CricketStore, match: Match, innings: com.example.cricketscoring.model.DerivedInnings) {
+private fun BowlerPrompt(
+    store: CricketStore,
+    match: Match,
+    derived: com.example.cricketscoring.model.DerivedMatch,
+    innings: com.example.cricketscoring.model.DerivedInnings,
+    canUndo: Boolean,
+    canRedo: Boolean,
+) {
     val bowling = if (innings.bowlingTeamId == match.teamA.teamId) match.teamA else match.teamB
     val cap = match.rules.overs.maxOversPerBowler?.times(match.rules.overs.ballsPerOver)
     val last = innings.deliveries.lastOrNull()?.bowlerId
@@ -479,6 +561,7 @@ private fun BowlerPrompt(store: CricketStore, match: Match, innings: com.example
         underCap && change
     }
     CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ScoreboardHero(match, derived, innings, steps = true, canUndo = canUndo, canRedo = canRedo, onUndo = { store.undo(match.id) }, onRedo = { store.redo(match.id) })
         Text("Next ${match.rules.labels.bowlingRole.lowercase()}", style = MaterialTheme.typography.headlineSmall)
         options.forEach { player ->
             PrimaryButton(player.name, { store.nextBowler(match.id, player.id) }, Modifier.fillMaxWidth())
@@ -510,6 +593,18 @@ private fun NextInningsPrompt(store: CricketStore, match: Match, superOver: Bool
         finished?.deliveries?.lastOrNull()?.timestampEpochMs?.takeIf { it > 0L } ?: nowMillis()
     }
     CommonColumn(scrollable = true, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        finished?.let { innings ->
+            ScoreboardHero(
+                match,
+                derived,
+                innings,
+                steps = true,
+                canUndo = store.canUndo(match.id),
+                canRedo = store.canRedo(match.id),
+                onUndo = { store.undo(match.id) },
+                onRedo = { store.redo(match.id) },
+            )
+        }
         PanelTabs(
             modifier = Modifier.fillMaxWidth(),
             options = listOf("Break" to (review == 0), "Scorecard" to (review == 1), "Breakdown" to (review == 2)),
@@ -1061,10 +1156,15 @@ private fun LiveScorecard(
     match: Match,
     derived: com.example.cricketscoring.model.DerivedMatch,
     selectedIndex: Int,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
     val list = derived.innings
     val selected = selectedIndex.takeIf { it in list.indices } ?: list.lastIndex
+    val active = derived.currentInnings()
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         InningsSelector(
             match = match,
@@ -1074,7 +1174,17 @@ private fun LiveScorecard(
             onSelect = onSelect,
         )
         list.getOrNull(selected)?.let { shown ->
-            ScoreboardHero(match, derived, shown)
+            val liveCard = active != null && shown.index == active.index && shown.superOver == active.superOver
+            ScoreboardHero(
+                match,
+                derived,
+                shown,
+                steps = liveCard,
+                canUndo = canUndo,
+                canRedo = canRedo,
+                onUndo = onUndo,
+                onRedo = onRedo,
+            )
             InningsTables(match, shown)
         }
     }
@@ -1177,18 +1287,22 @@ private fun YetToBatSection(
                 )
             }
             if (playerIds.size > 2) {
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(match.style.accent().copy(alpha = 0.16f))
-                        .border(1.dp, match.style.accent().copy(alpha = 0.45f), RoundedCornerShape(999.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text(
-                        if (expanded) "Collapse ▲" else "Expand +$hiddenCount ▼",
-                        color = match.style.accent(),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
+                    if (!expanded && hiddenCount > 0) {
+                        Text(
+                            "+$hiddenCount",
+                            color = match.style.accent(),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    CollapseChevron(
+                        expanded,
+                        tint = match.style.accent(),
+                        description = if (expanded) "Collapse" else "Expand",
                     )
                 }
             }
@@ -1339,7 +1453,7 @@ private fun OversPanel(match: Match, innings: com.example.cricketscoring.model.D
                     Text("Over $number · ${over.bowlerName}", fontWeight = FontWeight.Bold)
                     Text("${over.runs} runs · ${over.wickets} wkts · ${over.scoreAfter}/${over.wicketsAfter}", color = Muted)
                 }
-                Text(if (expanded) "Hide" else "Open", color = Lawn, fontWeight = FontWeight.SemiBold)
+                CollapseChevron(expanded, description = if (expanded) "Hide" else "Open")
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

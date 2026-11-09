@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -81,6 +83,7 @@ fun ScorecardScreen(store: CricketStore, matchId: String) {
             title = if (finished) "Scorecard" else match.title,
             onBack = { navigator.back() },
             action = "Share",
+            actionIcon = Icons.Filled.Share,
             onAction = { store.shareText = scorecardText(match) },
         )
         CommonColumn(

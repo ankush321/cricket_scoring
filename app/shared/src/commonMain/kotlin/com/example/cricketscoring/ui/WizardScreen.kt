@@ -158,12 +158,14 @@ fun WizardScreen(store: CricketStore) {
     }
     if (creating) {
         CreateTeamSheet(
+            store = store,
             onDismiss = { creating = false },
-            onCreate = { name, players ->
+            onCreate = { name, players, existingIds ->
                 val team = store.createTeam(
                     name,
                     players,
-                    teamPalette[store.data.teams.size % teamPalette.size]
+                    teamPalette[store.data.teams.size % teamPalette.size],
+                    existingIds,
                 )
                 if (team != null) {
                     edit { current ->
@@ -1401,7 +1403,7 @@ private fun CollapsibleBlock(
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(if (open) "Tap to hide" else body, color = Muted)
             }
-            Text(if (open) "Hide" else "Show", color = Lawn, fontWeight = FontWeight.Bold)
+            CollapseChevron(open)
         }
         if (open) {
             Spacer(Modifier.height(14.dp))
@@ -1435,12 +1437,7 @@ private fun RuleCategory(title: String, summary: String, content: @Composable ()
                     Text(summary, color = Muted, fontSize = 12.sp, lineHeight = 16.sp)
                 }
             }
-            Text(
-                if (open) "Hide" else "Show",
-                color = if (open) Gold else Lawn,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-            )
+            CollapseChevron(open, tint = if (open) Gold else Lawn)
         }
         if (open) {
             Column(
